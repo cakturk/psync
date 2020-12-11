@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -122,7 +123,6 @@ func NewRollingReader(r *bufio.Reader, window int) (io.Reader, error) {
 			return nil, errShortRead
 		}
 	}
-	// log.Printf("xyz: %s, err: %v, n: %v", p, err, n)
 	rr := &RollingReader{
 		r:   r,
 		buf: p,
@@ -136,24 +136,24 @@ type RollingReader struct {
 	r   *bufio.Reader
 	buf []byte
 	len int
+	err error
 }
 
-// s     e
-// x x x x x x x x
-// h   t
 // moves window forward one byte at a time
 func (r *RollingReader) Read(p []byte) (n int, err error) {
-	if r.len < len(r.buf) {
-		fmt.Printf("burada\n")
-		return copy(p, r.buf[:r.len]), nil
+	if r.err != nil {
+		return 0, r.err
 	}
+	copy(p, r.buf[:r.len])
+
+	// move forward sliding window
 	copy(r.buf, r.buf[1:])
 	b, err := r.r.ReadByte()
 	if err != nil {
-		return 0, err
+		r.err = err
 	}
 	r.buf[len(r.buf)-1] = b
-	return len(r.buf), nil
+	return r.len, nil
 }
 
 func TestRollingReader(t *testing.T) {
@@ -162,7 +162,29 @@ func TestRollingReader(t *testing.T) {
 		window int
 		want   []string
 	}{
-		{"Plan 9 from outer space", 4, nil},
+		{
+			"abcdefghij",
+			4,
+			[]string{
+				"abcd", "bcde", "cdef", "defg",
+				"efgh", "fghi", "ghij",
+			},
+		},
+		{
+			"Plan 9 from outer space",
+			4,
+			[]string{
+				"Plan", "lan ", "an 9", "n 9 ", " 9 f",
+				"9 fr", " fro", "from", "rom ", "om o",
+				"m ou", " out", "oute", "uter", "ter ",
+				"er s", "r sp", " spa", "spac", "pace",
+			},
+		},
+		{
+			"xyz",
+			4,
+			[]string{"xyz"},
+		},
 	}
 	read := func(s string, w int) ([]string, error) {
 		rr, err := NewRollingReader(bufio.NewReader(strings.NewReader(s)), w)
@@ -174,19 +196,19 @@ func TestRollingReader(t *testing.T) {
 		for {
 			n, err := rr.Read(buf)
 			if err != nil {
-				return sl, fmt.Errorf("read: %w", err)
+				return sl, err
 			}
 			sl = append(sl, string(buf[:n]))
 		}
 	}
-	_ = read
 	for _, tc := range tt {
 		got, err := read(tc.in, tc.window)
-		if err != nil {
+		if err != nil && err != io.EOF {
 			t.Fatalf("failed: %v", err)
 		}
-		_ = err
-		t.Errorf("in: %v, got: %v, want: %v", tc.in, got, tc.want)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("in: %q, got: %q, want: %q", tc.in, got, tc.want)
+		}
 
 	}
 }
