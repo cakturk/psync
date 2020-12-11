@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -34,15 +36,56 @@ const (
 )
 
 type MergeReuse struct {
-	ChunkID int
-	Off     int64
+	ChunkID  int
+	NrChunks int
+	Off      int64
 }
 
 type MergeBlob struct {
 	Size, Off int64
 }
 
-func SendMergeInfo(b *BaseFile, enc Encoder) {
+type ChunkWithID struct {
+	ID int // Chunk ID (index of chunk)
+	Chunk
+}
+
+type Sender struct {
+	r     io.ReadWriter
+	enc   Encoder
+	root  string
+	syncs []SyncEnt
+}
+
+var errShortRead = errors.New("unexpected EOF")
+
+func (s *Sender) sendDirections(e *SyncEnt) error {
+	if e.Size == 0 {
+		return nil
+	}
+	f, err := os.Open(filepath.Join(s.root, e.Path))
+	b := bufio.NewReader(f)
+	if err != nil {
+		return err
+	}
+	m := md5.New()
+	r := adler32.New()
+
+	// write initial window
+	if n, err := io.CopyN(r, b, int64(e.base.ChunkSize)); err != nil {
+		if err != io.EOF {
+			return err
+		}
+		if n == 0 {
+			return errShortRead
+		}
+	}
+	p := make([]byte, e.base.ChunkSize)
+	for {
+	}
+	_ = p
+	_ = m
+	return nil
 }
 
 type SyncEnt struct {
@@ -52,7 +95,9 @@ type SyncEnt struct {
 	Size     int64
 	Mtime    time.Time
 
-	chunkSize int
+	// following fields are not serialized
+	chunkSize int      // used by receiver only
+	base      BaseFile // used by sender only
 }
 
 type Encoder interface {
@@ -61,8 +106,10 @@ type Encoder interface {
 
 type BaseFile struct {
 	ID        int
-	ChunkSize int
+	ChunkSize int // 0 means this is a new file
 	Size      int64
+
+	chunks []map[uint32]ChunkWithID // used by sender
 }
 
 func (b *BaseFile) NumChunks() int {
