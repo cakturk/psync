@@ -64,10 +64,11 @@ func (s *Sender) sendDirections(e *SyncEnt) error {
 		return nil
 	}
 	f, err := os.Open(filepath.Join(s.root, e.Path))
-	b := bufio.NewReader(f)
 	if err != nil {
 		return err
 	}
+	defer f.Close()
+	b := bufio.NewReader(f)
 	m := md5.New()
 	r := adler32.New()
 
@@ -81,8 +82,6 @@ func (s *Sender) sendDirections(e *SyncEnt) error {
 		}
 	}
 	p := make([]byte, e.base.ChunkSize)
-	for {
-	}
 	_ = p
 	_ = m
 	return nil

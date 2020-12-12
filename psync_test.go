@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"reflect"
 	"strings"
 	"testing"
@@ -109,12 +110,12 @@ func TestEnc(t *testing.T) {
 	}
 }
 
-func NewRollingReader(r *bufio.Reader, window int) (io.Reader, error) {
+func NewRollingReader(r *bufio.Reader, window int) (*RollingReader, error) {
 	var (
 		n   int
 		err error
 	)
-	p := make([]byte, window)
+	p := make([]byte, window+1)
 	if n, err = r.Read(p); err != nil {
 		if err != io.EOF {
 			return nil, err
@@ -124,19 +125,21 @@ func NewRollingReader(r *bufio.Reader, window int) (io.Reader, error) {
 		}
 	}
 	rr := &RollingReader{
-		r:   r,
-		buf: p,
-		len: n,
+		r:        r,
+		buf:      p,
+		len:      n,
+		lastByte: -1,
 	}
 	return rr, nil
 }
 
 // read from file -> write to -> wr
 type RollingReader struct {
-	r   *bufio.Reader
-	buf []byte
-	len int
-	err error
+	r        *bufio.Reader
+	buf      []byte
+	len      int
+	lastByte int
+	err      error
 }
 
 // moves window forward one byte at a time
@@ -147,13 +150,85 @@ func (r *RollingReader) Read(p []byte) (n int, err error) {
 	copy(p, r.buf[:r.len])
 
 	// move forward sliding window
-	copy(r.buf, r.buf[1:])
+	r.lastByte = int(r.buf[0])
 	b, err := r.r.ReadByte()
 	if err != nil {
 		r.err = err
+		return r.len, nil
 	}
+	copy(r.buf, r.buf[1:])
 	r.buf[len(r.buf)-1] = b
 	return r.len, nil
+}
+
+//     x     y
+// a b c d e f g h i
+//   0     1
+func (r *RollingReader) Backup() error {
+	log.Printf("calling backup: %v, lb: %d", r.err, r.lastByte)
+	if r.err != nil {
+		if r.err == io.EOF {
+			r.err = nil
+			return nil
+		}
+		return r.err
+	}
+	if r.lastByte < 0 {
+		return fmt.Errorf("invalid use of Backup")
+	}
+	copy(r.buf[1:], r.buf[0:])
+	r.buf[0] = byte(r.lastByte)
+	r.lastByte = -1
+	return nil
+}
+
+func TestBackup(t *testing.T) {
+	var tt = []struct {
+		in       string
+		window   int
+		backupAt int
+		want     []string
+	}{
+		{
+			"abcde",
+			4,
+			2,
+			[]string{
+				"abcd", "bcde",
+			},
+		},
+	}
+	read := func(s string, w int) ([]string, error) {
+		rr, err := NewRollingReader(bufio.NewReader(strings.NewReader(s)), w)
+		if err != nil {
+			return nil, fmt.Errorf("wtf: %w", err)
+		}
+		var sl []string
+		buf := make([]byte, w)
+		count := 0
+		for {
+			n, err := rr.Read(buf)
+			if count++; count == 1 {
+				if err := rr.Backup(); err != nil {
+					return sl, fmt.Errorf("backup: %w", err)
+				}
+			}
+			if err != nil {
+				return sl, err
+			}
+			sl = append(sl, string(buf[:n]))
+		}
+	}
+	for _, tc := range tt {
+		got, err := read(tc.in, tc.window)
+		if err != nil && err != io.EOF {
+			t.Fatalf("failed: %v", err)
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("in: %q, got: %q, want: %q", tc.in, got, tc.want)
+		}
+
+	}
 }
 
 func TestRollingReader(t *testing.T) {
