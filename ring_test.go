@@ -5,34 +5,21 @@ import (
 	"testing"
 )
 
-func PowerOf2(x int) bool {
-	return (x-1)&x == 0
-}
-
-func TestPowerOf2(t *testing.T) {
-	y := PowerOf2(3)
-	t.Errorf("d: %v", y)
-}
-
-// unsigned nextPowerOf2(unsigned n)
-// {
-//     // decrement n (to handle the case when n itself
-//     // is a power of 2)
-//     n = n - 1;
-
-//     // do till only one bit is left
-//     while (n & n - 1)
-//         n = n & n - 1;    // unset rightmost bit
-
-//     // n is now a power of two (less than n)
-
-//     // return next power of 2
-//     return n << 1;
-// }
-
 func TestRoundUp2(t *testing.T) {
-	d := roundupPowerOf2(100)
-	t.Errorf("d: %v", d)
+	tt := []struct {
+		in, want int
+	}{
+		{100, 128},
+		{256, 256},
+		{257, 512},
+		{1100, 2048},
+		{3400, 4096},
+	}
+	for _, tc := range tt {
+		if got := roundupPowerOf2(tc.in); got != tc.want {
+			t.Fatalf("roundupPowerOf2(%d) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
 }
 
 func TestRingCount(t *testing.T) {
