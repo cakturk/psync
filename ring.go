@@ -15,6 +15,8 @@ func (r *Ring) Write(p []byte) (n int, err error) {
 		return 0, errors.New("ring: short write")
 	}
 	r.buf = make([]byte, roundupPowerOf2(len(p)+1))
+	r.r = 0
+	r.w = 0
 	return copy(r.buf, p), nil
 }
 
@@ -22,17 +24,33 @@ func (r *Ring) Read(p []byte) (n int, err error) {
 	if len(r.buf) == 0 {
 		return 0, io.EOF
 	}
-	if r.count() < len(p) {
+	count := r.count()
+	if count == 0 {
+		return 0, io.EOF
 	}
-	n = copy(p, r.buf[0:r.countToEnd()])
-	n = (r.r + n) & len(r.buf)
-	n += copy(p, r.buf[0:r.countToEnd()])
-	n = (r.r + n) & len(r.buf)
-	panic("not implemented") // TODO: Implement
+	rr := r.r
+	if dr := count - len(p); dr > 0 {
+		// advance read pointer
+		// - - - - r - - - - - - - w
+		// - - w - - - - - r - - - -
+		// - - - - - - | - - - - - |
+		rr = (rr + dr) & (len(r.buf) - 1)
+		count = len(p)
+	}
+	n = copy(p, r.buf[rr:rr+countToEnd(rr, r.w, len(r.buf))])
+	rr = (rr + n) & (len(r.buf) - 1)
+	count -= n
+	if count > 0 {
+		n += copy(p[n:], r.buf[rr:rr+count])
+	}
+	return n, nil
 }
 
 func (r *Ring) WriteByte(c byte) error {
-	panic("not implemented") // TODO: Implement
+	r.buf[r.w] = c
+	r.r = (r.r + 1) & (len(r.buf) - 1)
+	r.w = (r.w + 1) & (len(r.buf) - 1)
+	return nil
 }
 
 func (r *Ring) count() int {
@@ -40,8 +58,12 @@ func (r *Ring) count() int {
 }
 
 func (r *Ring) countToEnd() int {
-	end := (len(r.buf)) - r.r
-	n := ((r.w + end) & (len(r.buf) - 1))
+	return countToEnd(r.r, r.w, len(r.buf))
+}
+
+func countToEnd(r, w, len int) int {
+	end := len - r
+	n := ((w + end) & (len - 1))
 	if n < end {
 		return int(n)
 	}

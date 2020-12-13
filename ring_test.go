@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"io"
+	"testing"
+)
 
 func PowerOf2(x int) bool {
 	return (x-1)&x == 0
@@ -88,6 +91,68 @@ func TestRingWrite(t *testing.T) {
 		}
 		if len(w.buf) != tc.buflen {
 			t.Fatalf("buflen: %d, want %d", len(w.buf), tc.buflen)
+		}
+	}
+}
+
+func TestRingRead(t *testing.T) {
+	tt := []struct {
+		buf  []byte
+		r, w int
+		want string
+	}{
+		{[]byte("abcdefghijklmnop"), 0, 3, "abc"},
+		{[]byte("abcdefghijklmnop"), 9, 14, "klmn"},
+		{[]byte("abcdefghijklmnop"), 14, 2, "opab"},
+		{[]byte("abcdefghijklmnop"), 14, 3, "pabc"},
+		{[]byte("abcdefghijklmnop"), 15, 4, "abcd"},
+	}
+	for _, tc := range tt {
+		rr := Ring{
+			buf: tc.buf,
+			r:   tc.r,
+			w:   tc.w,
+		}
+		p := make([]byte, len(tc.want))
+		n, err := rr.Read(p)
+		if err != nil && err != io.EOF {
+			t.Fatal(err)
+		}
+		if got := string(p[:n]); got != tc.want {
+			t.Fatalf("Read() = %q, want %q", got, tc.want)
+		}
+	}
+}
+
+func TestWriteByte(t *testing.T) {
+	tt := []struct {
+		r, w  int
+		bytes string
+		want  string
+	}{
+		{0, 6, "xyz", "fxyz"},
+		{9, 14, "skb,mb", ",mb"},
+		// {14, 2, "xyz", "opab"},
+		// {14, 3, "xyz", "pabc"},
+		// {15, 4, "xyz", "abcd"},
+	}
+	buf := []byte("abcdefghijklmnop")
+	for _, tc := range tt {
+		rr := Ring{
+			buf: buf,
+			r:   tc.r,
+			w:   tc.w,
+		}
+		for i := range tc.bytes {
+			rr.WriteByte(tc.bytes[i])
+		}
+		p := make([]byte, len(tc.want))
+		n, err := rr.Read(p)
+		if err != nil && err != io.EOF {
+			t.Fatal(err)
+		}
+		if got := string(p[:n]); got != tc.want {
+			t.Fatalf("Read() = %q, want %q", got, tc.want)
 		}
 	}
 }
