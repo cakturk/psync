@@ -8,10 +8,11 @@ type Ring struct {
 }
 
 func (r *Ring) Write(p []byte) (n int, err error) {
-	if len(p) >= len(r.buf)-1 {
-		return 0, errors.New("ring: invalid use of Write")
+	if len(p) <= 2 {
+		return 0, errors.New("ring: short write")
 	}
-	panic("not implemented") // TODO: Implement
+	r.buf = make([]byte, roundupPowerOf2(len(p)+1))
+	return copy(r.buf, p), nil
 }
 
 func (r *Ring) Read(p []byte) (n int, err error) {
@@ -48,4 +49,16 @@ func (r *Ring) freeToEnd() int {
 		return int(n)
 	}
 	return int(end) + 1
+}
+
+func roundupPowerOf2(n int) int {
+	v := uint32(n)
+	v--
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	v++
+	return int(v)
 }

@@ -27,20 +27,8 @@ func TestPowerOf2(t *testing.T) {
 //     return n << 1;
 // }
 
-func RoundupPowerOf2(n int) int {
-	v := uint32(n)
-	v--
-	v |= v >> 1
-	v |= v >> 2
-	v |= v >> 4
-	v |= v >> 8
-	v |= v >> 16
-	v++
-	return int(v)
-}
-
 func TestRoundUp2(t *testing.T) {
-	d := RoundupPowerOf2(1025)
+	d := roundupPowerOf2(100)
 	t.Errorf("d: %v", d)
 }
 
@@ -69,6 +57,37 @@ func TestRingCount(t *testing.T) {
 		}
 		if got := rr.freeToEnd(); got != tc.spcToEnd {
 			t.Fatalf("freeToEnd([%d, %d]) = %v, want %v", tc.r, tc.w, got, tc.spcToEnd)
+		}
+	}
+}
+
+func TestRingWrite(t *testing.T) {
+	tt := []struct {
+		in     []byte
+		buflen int
+		err    bool
+	}{
+		{nil, 0, true},
+		{[]byte{}, 0, true},
+		{[]byte{1}, 0, true},
+		{make([]byte, 99), 128, false},
+		{make([]byte, 300), 512, false},
+		{make([]byte, 1024), 2048, false},
+	}
+	for _, tc := range tt {
+		var w Ring
+		n, err := w.Write(tc.in)
+		if err != nil {
+			if tc.err == false {
+				t.Fatalf("Write: %v, want nil", err)
+			}
+			continue
+		}
+		if n != len(tc.in) {
+			t.Fatalf("Write: %d, want %d", n, len(tc.in))
+		}
+		if len(w.buf) != tc.buflen {
+			t.Fatalf("buflen: %d, want %d", len(w.buf), tc.buflen)
 		}
 	}
 }
