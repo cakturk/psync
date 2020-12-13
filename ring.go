@@ -1,10 +1,13 @@
 package main
 
-import "errors"
+import (
+	"errors"
+	"io"
+)
 
 type Ring struct {
 	buf  []byte
-	r, w uint
+	r, w int
 }
 
 func (r *Ring) Write(p []byte) (n int, err error) {
@@ -16,6 +19,15 @@ func (r *Ring) Write(p []byte) (n int, err error) {
 }
 
 func (r *Ring) Read(p []byte) (n int, err error) {
+	if len(r.buf) == 0 {
+		return 0, io.EOF
+	}
+	if r.count() < len(p) {
+	}
+	n = copy(p, r.buf[0:r.countToEnd()])
+	n = (r.r + n) & len(r.buf)
+	n += copy(p, r.buf[0:r.countToEnd()])
+	n = (r.r + n) & len(r.buf)
 	panic("not implemented") // TODO: Implement
 }
 
@@ -24,12 +36,12 @@ func (r *Ring) WriteByte(c byte) error {
 }
 
 func (r *Ring) count() int {
-	return int((r.w - r.r) & (uint(len(r.buf)) - 1))
+	return int((r.w - r.r) & ((len(r.buf)) - 1))
 }
 
 func (r *Ring) countToEnd() int {
-	end := uint(len(r.buf)) - r.r
-	n := ((r.w + end) & (uint(len(r.buf) - 1)))
+	end := (len(r.buf)) - r.r
+	n := ((r.w + end) & (len(r.buf) - 1))
 	if n < end {
 		return int(n)
 	}
@@ -39,12 +51,12 @@ func (r *Ring) countToEnd() int {
 // r.w - head
 // r.r - tail
 func (r *Ring) free() int {
-	return int((r.r - (r.w + 1)) & uint(len(r.buf)-1))
+	return int((r.r - (r.w + 1)) & (len(r.buf) - 1))
 }
 
 func (r *Ring) freeToEnd() int {
-	end := uint(len(r.buf)) - 1 - r.w
-	n := ((r.r + end) & (uint(len(r.buf) - 1)))
+	end := (len(r.buf)) - 1 - r.w
+	n := ((r.r + end) & (len(r.buf) - 1))
 	if n <= end {
 		return int(n)
 	}

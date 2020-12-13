@@ -34,7 +34,7 @@ func TestRoundUp2(t *testing.T) {
 
 func TestRingCount(t *testing.T) {
 	tt := []struct {
-		r, w               uint
+		r, w               int
 		cnt, space         int
 		cntToEnd, spcToEnd int
 	}{
