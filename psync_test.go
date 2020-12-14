@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 type sliceEncoder []interface{}
@@ -71,7 +72,7 @@ func TestNilFieldEnc(t *testing.T) {
 func TestSyncEnt(t *testing.T) {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
-	err := enc.Encode(SyncEnt{})
+	err := enc.Encode(SrcFile{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,5 +304,50 @@ func (s *mergeDscEnc) Encode(e interface{}) error {
 	return nil
 }
 
-func TestSendDirections(t *testing.T) {
+var (
+	orig = `01234567890abcdef
+ghijklmnopqrstuvwxyz
+Plan9FromBellLabs
+`
+	modified = `01234567890abcdef
+ghijklmnop-modified-
+Plan9FromBellLabs
+`
+)
+
+func TestMergeDesc(t *testing.T) {
+	// f, err := os.Open("/etc/login.defs")
+	f := strings.NewReader(orig)
+	var err error
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := &SrcFile{
+		Path:      "",
+		Uid:       0,
+		Gid:       0,
+		Mode:      0,
+		Size:      0,
+		Mtime:     time.Time{},
+		chunkSize: 0,
+		base: DstFile{
+			ID:        0,
+			ChunkSize: 8,
+			Size:      0,
+			chunks: map[uint32]ChunkWithID{
+				0: {
+					ID: 0,
+					Chunk: Chunk{
+						Rsum: 0,
+						Sum:  []byte{},
+					},
+				},
+			},
+		},
+	}
+	enc := &mergeDscEnc{}
+	if err = sendMergeDescs(f, src, enc); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("%v", enc)
 }

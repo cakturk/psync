@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"io"
-	"os"
 	"testing"
 )
 
@@ -142,22 +140,6 @@ func TestWriteByte(t *testing.T) {
 		}
 		if got := string(p[:n]); got != tc.want {
 			t.Fatalf("Read() = %q, want %q", got, tc.want)
-		}
-	}
-}
-
-func TestRead(t *testing.T) {
-	f, err := os.Open("/etc/login.defs")
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := bufio.NewReader(f)
-	p := make([]byte, 512)
-	for {
-		_ = p
-		n, err := r.ReadByte()
-		if err != nil {
-			t.Fatalf("err: %v, n: %d", err, n)
 		}
 	}
 }

@@ -24,7 +24,7 @@ const (
 	Partial
 )
 
-type MergeHdr struct {
+type MergeDesc struct {
 	ID  int
 	Typ MergeType
 }
@@ -52,15 +52,15 @@ type ChunkWithID struct {
 }
 
 type Sender struct {
-	r     io.ReadWriter
-	enc   Encoder
-	root  string
-	syncs []SyncEnt
+	r        io.ReadWriter
+	enc      Encoder
+	root     string
+	srcFiles []SrcFile
 }
 
 var errShortRead = errors.New("unexpected EOF")
 
-func sendDirections(r io.Reader, e *SyncEnt, enc Encoder) error {
+func sendMergeDescs(r io.Reader, e *SrcFile, enc Encoder) error {
 	var rr Ring
 	b := bufio.NewReader(r)
 	mh := md5.New()
@@ -88,10 +88,13 @@ func sendDirections(r io.Reader, e *SyncEnt, enc Encoder) error {
 			rh.Roll(c)
 			rr.WriteByte(c)
 			ch, ok := e.base.chunks[rh.Sum32()]
+			// panic(fmt.Sprintf("go away"))
+			enc.Encode(rh.Sum32())
 			if !ok {
 				continue
 			}
 			// Check for false positive adler32 matches
+			mh.Reset()
 			io.CopyN(mh, &rr, int64(e.base.ChunkSize))
 			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
 			}
@@ -100,7 +103,7 @@ func sendDirections(r io.Reader, e *SyncEnt, enc Encoder) error {
 	return nil
 }
 
-func (s *Sender) sendDirections(e *SyncEnt) error {
+func (s *Sender) sendDirections(e *SrcFile) error {
 	if e.Size == 0 {
 		return nil
 	}
@@ -109,10 +112,10 @@ func (s *Sender) sendDirections(e *SyncEnt) error {
 		return err
 	}
 	defer f.Close()
-	return sendDirections(f, e, s.enc)
+	return sendMergeDescs(f, e, s.enc)
 }
 
-type SyncEnt struct {
+type SrcFile struct {
 	Path     string
 	Uid, Gid int
 	Mode     os.FileMode
@@ -122,14 +125,14 @@ type SyncEnt struct {
 	// following fields are not serialized
 	chunkSize int // used by receiver only
 
-	base BaseFile // used by sender only
+	base DstFile // used by sender only
 }
 
 type Encoder interface {
 	Encode(e interface{}) error
 }
 
-type BaseFile struct {
+type DstFile struct {
 	ID        int
 	ChunkSize int // 0 means this is a new file
 	Size      int64
@@ -137,7 +140,7 @@ type BaseFile struct {
 	chunks map[uint32]ChunkWithID // used by sender
 }
 
-func (b *BaseFile) NumChunks() int {
+func (b *DstFile) NumChunks() int {
 	return int((b.Size + (int64(b.ChunkSize) - 1)) / int64(b.ChunkSize))
 }
 
@@ -177,13 +180,13 @@ func chunkFile(path string, enc Encoder, blockSize int) error {
 	return nil
 }
 
-func SendBaseFiles(root string, chunkSize int, list []SyncEnt, enc Encoder) error {
+func SendDstFiles(root string, chunkSize int, list []SrcFile, enc Encoder) error {
 	for i, v := range list {
 		path := filepath.Join(root, v.Path)
 		info, err := os.Stat(path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				if err := enc.Encode(BaseFile{ID: i}); err != nil {
+				if err := enc.Encode(DstFile{ID: i}); err != nil {
 					return err
 				}
 				continue
@@ -193,7 +196,7 @@ func SendBaseFiles(root string, chunkSize int, list []SyncEnt, enc Encoder) erro
 		if info.ModTime() == v.Mtime && info.Size() == v.Size {
 			continue
 		}
-		if err := enc.Encode(BaseFile{
+		if err := enc.Encode(DstFile{
 			ID:        i,
 			ChunkSize: chunkSize,
 			Size:      info.Size(),
@@ -208,8 +211,8 @@ func SendBaseFiles(root string, chunkSize int, list []SyncEnt, enc Encoder) erro
 	return nil
 }
 
-func GenSyncList(root string) ([]SyncEnt, error) {
-	var list []SyncEnt
+func GenSyncList(root string) ([]SrcFile, error) {
+	var list []SrcFile
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -218,7 +221,7 @@ func GenSyncList(root string) ([]SyncEnt, error) {
 		if err != nil {
 			return err
 		}
-		list = append(list, SyncEnt{
+		list = append(list, SrcFile{
 			Path:  rel,
 			Uid:   int(info.Sys().(*syscall.Stat_t).Uid),
 			Gid:   int(info.Sys().(*syscall.Stat_t).Gid),
