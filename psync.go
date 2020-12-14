@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	stdadler32 "hash/adler32"
 	"io"
 	"log"
 	"os"
@@ -15,6 +17,10 @@ import (
 
 	"github.com/chmduquesne/rollinghash/adler32"
 )
+
+type Encoder interface {
+	Encode(e interface{}) error
+}
 
 type MergeType byte
 
@@ -128,10 +134,6 @@ type SrcFile struct {
 	base DstFile // used by sender only
 }
 
-type Encoder interface {
-	Encode(e interface{}) error
-}
-
 type DstFile struct {
 	ID        int
 	ChunkSize int // 0 means this is a new file
@@ -149,19 +151,21 @@ type Chunk struct {
 	Sum  []byte
 }
 
-func chunkFile(path string, enc Encoder, blockSize int) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+func (c *Chunk) String() string {
+	// panic("noooo")
+	return fmt.Sprintf("Rsum: %08x, Sum: %s", c.Rsum, hex.EncodeToString(c.Sum))
+}
+
+func doChunkFile(r io.Reader, enc Encoder, blockSize int) error {
 	sum := md5.New()
-	rol := adler32.New()
+	rol := stdadler32.New()
 	w := io.MultiWriter(sum, rol)
+	var err error
 	for err == nil {
 		var n int64
-		if n, err = io.CopyN(w, f, int64(blockSize)); err != nil {
+		if n, err = io.CopyN(w, r, int64(blockSize)); err != nil {
 			if err != io.EOF {
+				// panic(fmt.Sprintf("n: %d", n))
 				return err
 			}
 			if n == 0 {
@@ -178,6 +182,15 @@ func chunkFile(path string, enc Encoder, blockSize int) error {
 		sum.Reset()
 	}
 	return nil
+}
+
+func chunkFile(path string, enc Encoder, blockSize int) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return doChunkFile(f, enc, blockSize)
 }
 
 func SendDstFiles(root string, chunkSize int, list []SrcFile, enc Encoder) error {

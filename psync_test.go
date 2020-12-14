@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/gob"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/chmduquesne/rollinghash/adler32"
 )
 
 type sliceEncoder []interface{}
@@ -35,7 +38,7 @@ func TestChunkFile(t *testing.T) {
 func TestMd(t *testing.T) {
 	m := md5.New()
 	s := m.Sum(nil)
-	t.Errorf("%#v", s)
+	t.Errorf("%#v", hex.EncodeToString(s))
 }
 
 // x x x | x x x | x _ _ |
@@ -305,6 +308,7 @@ func (s *mergeDscEnc) Encode(e interface{}) error {
 }
 
 var (
+	// 54 bytes
 	orig = `01234567890abcdef
 ghijklmnopqrstuvwxyz
 Plan9FromBellLabs
@@ -314,6 +318,35 @@ ghijklmnop-modified-
 Plan9FromBellLabs
 `
 )
+
+type strSliceWriter []string
+
+func (s *strSliceWriter) Write(p []byte) (n int, err error) {
+	*s = append(*s, string(p))
+	return len(p), nil
+}
+
+func TestDoChunkFile(t *testing.T) {
+	f := strings.NewReader(orig)
+	var buf strSliceWriter
+	tr := io.TeeReader(f, &buf)
+	enc := sliceEncoder{}
+	if err := doChunkFile(tr, &enc, 8); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range enc {
+		ch := v.(Chunk)
+		t.Errorf("%v", &ch)
+	}
+	t.Fatalf("%#v", buf)
+}
+
+func TestAdler(t *testing.T) {
+	f := strings.NewReader(orig)
+	h := adler32.New()
+	io.CopyN(h, f, 8)
+	t.Errorf("hash: %x", h.Sum32())
+}
 
 func TestMergeDesc(t *testing.T) {
 	// f, err := os.Open("/etc/login.defs")
