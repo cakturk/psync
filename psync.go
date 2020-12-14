@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -59,6 +60,46 @@ type Sender struct {
 
 var errShortRead = errors.New("unexpected EOF")
 
+func sendDirections(r io.Reader, e *SyncEnt, enc Encoder) error {
+	var rr Ring
+	b := bufio.NewReader(r)
+	mh := md5.New()
+	rh := adler32.New()
+	// write initial window
+	if n, err := io.CopyN(rh, io.TeeReader(b, &rr), int64(e.base.ChunkSize)); err != nil {
+		if err != io.EOF {
+			return err
+		}
+		if n == 0 {
+			return errShortRead
+		}
+	}
+	p := make([]byte, 512)
+	for {
+		n, err := b.Read(p)
+		if err != nil {
+			log.Printf("sendDirections: n: %d, %v", n, err)
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		for _, c := range p[:n] {
+			rh.Roll(c)
+			rr.WriteByte(c)
+			ch, ok := e.base.chunks[rh.Sum32()]
+			if !ok {
+				continue
+			}
+			// Check for false positive adler32 matches
+			io.CopyN(mh, &rr, int64(e.base.ChunkSize))
+			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Sender) sendDirections(e *SyncEnt) error {
 	if e.Size == 0 {
 		return nil
@@ -68,23 +109,7 @@ func (s *Sender) sendDirections(e *SyncEnt) error {
 		return err
 	}
 	defer f.Close()
-	b := bufio.NewReader(f)
-	m := md5.New()
-	r := adler32.New()
-
-	// write initial window
-	if n, err := io.CopyN(r, b, int64(e.base.ChunkSize)); err != nil {
-		if err != io.EOF {
-			return err
-		}
-		if n == 0 {
-			return errShortRead
-		}
-	}
-	p := make([]byte, e.base.ChunkSize)
-	_ = p
-	_ = m
-	return nil
+	return sendDirections(f, e, s.enc)
 }
 
 type SyncEnt struct {
@@ -95,8 +120,9 @@ type SyncEnt struct {
 	Mtime    time.Time
 
 	// following fields are not serialized
-	chunkSize int      // used by receiver only
-	base      BaseFile // used by sender only
+	chunkSize int // used by receiver only
+
+	base BaseFile // used by sender only
 }
 
 type Encoder interface {
@@ -108,7 +134,7 @@ type BaseFile struct {
 	ChunkSize int // 0 means this is a new file
 	Size      int64
 
-	chunks []map[uint32]ChunkWithID // used by sender
+	chunks map[uint32]ChunkWithID // used by sender
 }
 
 func (b *BaseFile) NumChunks() int {

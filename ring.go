@@ -46,11 +46,10 @@ func (r *Ring) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-func (r *Ring) WriteByte(c byte) error {
+func (r *Ring) WriteByte(c byte) {
 	r.buf[r.w] = c
 	r.r = (r.r + 1) & (len(r.buf) - 1)
 	r.w = (r.w + 1) & (len(r.buf) - 1)
-	return nil
 }
 
 func (r *Ring) count() int {

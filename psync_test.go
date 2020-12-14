@@ -295,3 +295,13 @@ func TestFunction(t *testing.T) {
 	}
 	_ = b
 }
+
+type mergeDscEnc []interface{}
+
+func (s *mergeDscEnc) Encode(e interface{}) error {
+	*s = append(*s, e)
+	return nil
+}
+
+func TestSendDirections(t *testing.T) {
+}
