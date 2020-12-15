@@ -400,7 +400,7 @@ func TestMergeDesc(t *testing.T) {
 	if err = sendMergeDescs(f, src, enc); err != nil {
 		t.Fatal(err)
 	}
-	t.Fatalf("%v", enc)
+	t.Fatalf("%#v", enc)
 }
 
 func TestExample(t *testing.T) {

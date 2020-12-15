@@ -42,6 +42,17 @@ const (
 	Blob
 )
 
+func (c *ChunkType) String() string {
+	switch *c {
+	case ReuseExisting:
+		return "ReuseExisting"
+	case Blob:
+		return "ReuseExisting"
+	default:
+		return "Unknown chunk ID"
+	}
+}
+
 type MergeReuse struct {
 	ChunkID  int
 	NrChunks int
@@ -81,6 +92,30 @@ func sendMergeDescs(r io.ReadSeeker, e *SrcFile, enc Encoder) error {
 			return errShortRead
 		}
 	}
+	var (
+		// chunkHdrSent = false
+		// chunkType    = Blob
+		blob MergeBlob
+		// part         MergeReuse
+		err error
+	)
+	ch, ok := e.base.chunks[rh.Sum32()]
+	if !ok {
+		blob = MergeBlob{Size: int64(e.base.ChunkSize)}
+		enc.Encode(Blob)
+		enc.Encode(blob)
+		goto Loop
+	}
+	// Check for false positive adler32 matches
+	mh.Reset()
+	io.CopyN(mh, &rr, int64(e.base.ChunkSize))
+	if !bytes.Equal(mh.Sum(nil), ch.Sum) {
+	}
+	_, err = r.Seek(int64(e.base.ChunkSize), io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+Loop:
 	for {
 		c, err := b.ReadByte()
 		if err != nil {
@@ -154,7 +189,6 @@ type Chunk struct {
 }
 
 func (c *Chunk) String() string {
-	// panic("noooo")
 	return fmt.Sprintf("Rsum: %08x, Sum: %s", c.Rsum, hex.EncodeToString(c.Sum))
 }
 
