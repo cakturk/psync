@@ -81,32 +81,31 @@ func sendMergeDescs(r io.ReadSeeker, e *SrcFile, enc Encoder) error {
 			return errShortRead
 		}
 	}
-	p := make([]byte, 512)
 	for {
-		n, err := b.Read(p)
+		c, err := b.ReadByte()
 		if err != nil {
-			log.Printf("sendDirections: n: %d, %v", n, err)
+			log.Printf("sendDirections: c: %d, %v", c, err)
 			if err == io.EOF {
 				break
 			}
 			return err
 		}
-		for _, c := range p[:n] {
-			rh.Roll(c)
-			rr.WriteByte(c)
-			ch, ok := e.base.chunks[rh.Sum32()]
-			// panic(fmt.Sprintf("go away"))
-			enc.Encode(rh.Sum32())
-			if !ok {
-				continue
-			}
-			// Check for false positive adler32 matches
-			mh.Reset()
-			io.CopyN(mh, &rr, int64(e.base.ChunkSize))
-			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
-				continue
-			}
-			r.Seek(0, io.SeekCurrent)
+		rh.Roll(c)
+		rr.WriteByte(c)
+		ch, ok := e.base.chunks[rh.Sum32()]
+		// enc.Encode(rh.Sum32())
+		if !ok {
+			continue
+		}
+		// Check for false positive adler32 matches
+		mh.Reset()
+		io.CopyN(mh, &rr, int64(e.base.ChunkSize))
+		if !bytes.Equal(mh.Sum(nil), ch.Sum) {
+			continue
+		}
+		_, err = r.Seek(int64(e.base.ChunkSize), io.SeekCurrent)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
