@@ -66,13 +66,14 @@ type Sender struct {
 
 var errShortRead = errors.New("unexpected EOF")
 
-func sendMergeDescs(r io.Reader, e *SrcFile, enc Encoder) error {
+func sendMergeDescs(r io.ReadSeeker, e *SrcFile, enc Encoder) error {
 	var rr Ring
 	b := bufio.NewReader(r)
 	mh := md5.New()
 	rh := adler32.New()
+	tr := io.TeeReader(b, &rr)
 	// write initial window
-	if n, err := io.CopyN(rh, io.TeeReader(b, &rr), int64(e.base.ChunkSize)); err != nil {
+	if n, err := io.CopyN(rh, tr, int64(e.base.ChunkSize)); err != nil {
 		if err != io.EOF {
 			return err
 		}
@@ -103,7 +104,9 @@ func sendMergeDescs(r io.Reader, e *SrcFile, enc Encoder) error {
 			mh.Reset()
 			io.CopyN(mh, &rr, int64(e.base.ChunkSize))
 			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
+				continue
 			}
+			r.Seek(0, io.SeekCurrent)
 		}
 	}
 	return nil
@@ -156,16 +159,15 @@ func (c *Chunk) String() string {
 	return fmt.Sprintf("Rsum: %08x, Sum: %s", c.Rsum, hex.EncodeToString(c.Sum))
 }
 
-func doChunkFile(r io.Reader, enc Encoder, blockSize int) error {
+func doChunkFile(r io.Reader, enc Encoder, blkSize int) error {
 	sum := md5.New()
 	rol := stdadler32.New()
 	w := io.MultiWriter(sum, rol)
 	var err error
 	for err == nil {
 		var n int64
-		if n, err = io.CopyN(w, r, int64(blockSize)); err != nil {
+		if n, err = io.CopyN(w, r, int64(blkSize)); err != nil {
 			if err != io.EOF {
-				// panic(fmt.Sprintf("n: %d", n))
 				return err
 			}
 			if n == 0 {
