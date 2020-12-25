@@ -328,26 +328,50 @@ func (s *strSliceWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+// stdlib adler32
 // psync_test.go|343| "beam me " cf302a8
 // psync_test.go|343| "up scott" 301f05da
 // psync_test.go|343|        "y" 36720653
 
-func TestRollingAdler32Reset(t *testing.T) {
-	sr := strings.NewReader("beam me up scotty")
-	h := stdadler32.New()
-	p := make([]byte, 8)
-	for {
-		n, err := sr.Read(p)
+// rolling adler32
+// psync_test.go|353| "beam me " cf302a8
+// psync_test.go|353| "up scott" 301f05da
+// psync_test.go|353| "y" 36720653
+
+func TestRollingAdler32(t *testing.T) {
+	buf := []byte("beam me up scotty")
+	br := bufio.NewReader(bytes.NewReader(buf))
+	sh := stdadler32.New()
+	rh := adler32.New()
+	mr := io.MultiWriter(rh, sh)
+	if _, err := io.CopyN(mr, br, 8); err != nil {
+		t.Fatal(err)
+	}
+	min := func(x, y int) int {
+		if x < y {
+			return x
+		}
+		return y
+	}
+	cur := buf[:min(8, len(buf))]
+	for i := 1; ; i++ {
+		if s0, s1 := rh.Sum32(), sh.Sum32(); s0 != s1 {
+			t.Fatalf("checksum mismatch: %d == %d", s0, s1)
+		}
+		// t.Errorf("%q %x, %x", cur, rh.Sum32(), sh.Sum32())
+		b, err := br.ReadByte()
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			t.Fatal(err)
 		}
-		if _, err := h.Write(p[:n]); err != nil {
+		sh.Reset()
+		cur = buf[i:min(i+8, len(buf))]
+		if _, err := sh.Write(cur); err != nil {
 			t.Fatal(err)
 		}
-		t.Errorf("s%8q %x", p[:n], h.Sum32())
+		rh.Roll(b)
 	}
 }
 
