@@ -27,13 +27,13 @@ type MergeType byte
 
 const (
 	New MergeType = iota
-	NotChanged
 	Partial
 )
 
 type MergeDesc struct {
-	ID  int
-	Typ MergeType
+	ID        int
+	Typ       MergeType
+	TotalSize int64
 }
 
 type ChunkType byte
@@ -64,11 +64,6 @@ type MergeBlob struct {
 	Size, Off int64
 }
 
-type ChunkWithID struct {
-	ID int // Chunk ID (index of chunk)
-	Chunk
-}
-
 type Sender struct {
 	r        io.ReadWriter
 	enc      Encoder
@@ -78,7 +73,12 @@ type Sender struct {
 
 var errShortRead = errors.New("unexpected EOF")
 
-func sendMergeDescs(r io.ReadSeeker, e *SrcFile, enc Encoder) error {
+func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
+	if e.base.Size == 0 {
+		enc.Encode(MergeDesc{ID: id, Typ: New, TotalSize: e.Size})
+		_, err := io.Copy(enc, r)
+		return err
+	}
 	var rr Ring
 	b := bufio.NewReader(r)
 	mh := md5.New()
@@ -93,17 +93,22 @@ func sendMergeDescs(r io.ReadSeeker, e *SrcFile, enc Encoder) error {
 		}
 	}
 	var (
-		// chunkHdrSent = false
-		// chunkType    = Blob
-		blob MergeBlob
-		// part         MergeReuse
-		err error
+		blob      MergeBlob
+		err       error
+		chunkOff  int64
+		chunkSize = int64(e.base.ChunkSize)
 	)
 	ch, ok := e.base.chunks[rh.Sum32()]
 	if !ok {
-		blob = MergeBlob{Size: int64(e.base.ChunkSize)}
+		blob = MergeBlob{Size: int64(e.base.ChunkSize), Off: chunkOff}
+		enc.Encode(MergeDesc{ID: id, Typ: Partial})
 		enc.Encode(Blob)
 		enc.Encode(blob)
+		_, err := io.CopyN(enc, &rr, int64(e.base.ChunkSize))
+		if err != nil {
+			return err
+		}
+		chunkOff += chunkSize
 		goto Loop
 	}
 	// Check for false positive adler32 matches
@@ -135,20 +140,34 @@ Loop:
 			io.CopyN(mh, &rr, int64(e.base.ChunkSize))
 			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
 				enc.Encode(Blob)
-				enc.Encode(MergeBlob{Size: int64(e.base.ChunkSize)})
+				enc.Encode(MergeBlob{
+					Size: chunkSize,
+					Off:  chunkOff,
+				})
+				_, err := io.CopyN(enc, &rr, int64(e.base.ChunkSize))
+				if err != nil {
+					return err
+				}
+				chunkOff += chunkSize
 				continue
 			}
+			enc.Encode(ReuseExisting)
+			enc.Encode(MergeReuse{
+				ChunkID:  ch.ID,
+				NrChunks: 0,
+				Off:      chunkOff,
+			})
+			_, err = r.Seek(int64(e.base.ChunkSize), io.SeekCurrent)
+			if err != nil {
+				return err
+			}
+			b.Reset(r)
 		}
-		_, err = r.Seek(int64(e.base.ChunkSize), io.SeekCurrent)
-		if err != nil {
-			return err
-		}
-		b.Reset(r)
 	}
 	return nil
 }
 
-func (s *Sender) sendDirections(e *SrcFile) error {
+func (s *Sender) sendDirections(id int, e *SrcFile) error {
 	if e.Size == 0 {
 		return nil
 	}
@@ -157,7 +176,7 @@ func (s *Sender) sendDirections(e *SrcFile) error {
 		return err
 	}
 	defer f.Close()
-	return sendMergeDescs(f, e, s.enc)
+	return sendMergeDescs(f, id, e, s.enc)
 }
 
 type SrcFile struct {
@@ -173,10 +192,15 @@ type SrcFile struct {
 	base DstFile // used by sender only
 }
 
+type ChunkWithID struct {
+	ID int // Chunk ID (index of chunk)
+	Chunk
+}
+
 type DstFile struct {
 	ID        int
-	ChunkSize int // 0 means this is a new file
-	Size      int64
+	ChunkSize int
+	Size      int64 // 0 means this is a new file
 
 	chunks map[uint32]ChunkWithID // used by sender
 }

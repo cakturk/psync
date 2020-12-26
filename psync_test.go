@@ -306,17 +306,6 @@ func TestFunction(t *testing.T) {
 	_ = b
 }
 
-type mergeDscEnc []interface{}
-
-func (s *mergeDscEnc) Write(p []byte) (n int, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (s *mergeDscEnc) Encode(e interface{}) error {
-	*s = append(*s, e)
-	return nil
-}
-
 var (
 	// 54 bytes
 	orig = `01234567890abcdef
@@ -398,6 +387,18 @@ func TestDoChunkFile(t *testing.T) {
 	t.Fatalf("%#v", buf)
 }
 
+type mergeDscEnc []interface{}
+
+func (s *mergeDscEnc) Write(p []byte) (n int, err error) {
+	*s = append(*s, p)
+	return len(p), nil
+}
+
+func (s *mergeDscEnc) Encode(e interface{}) error {
+	*s = append(*s, e)
+	return nil
+}
+
 func TestMergeDesc(t *testing.T) {
 	// f, err := os.Open("/etc/login.defs")
 	f := strings.NewReader(orig)
@@ -410,7 +411,7 @@ func TestMergeDesc(t *testing.T) {
 		Uid:       0,
 		Gid:       0,
 		Mode:      0,
-		Size:      0,
+		Size:      int64(len(orig)),
 		Mtime:     time.Time{},
 		chunkSize: 0,
 		base: DstFile{
@@ -429,7 +430,7 @@ func TestMergeDesc(t *testing.T) {
 		},
 	}
 	enc := &mergeDscEnc{}
-	if err = sendMergeDescs(f, src, enc); err != nil {
+	if err = sendMergeDescs(f, 22, src, enc); err != nil {
 		t.Fatal(err)
 	}
 	t.Fatalf("%#v", enc)
