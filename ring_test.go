@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"testing"
 )
@@ -47,6 +48,52 @@ func TestRingCount(t *testing.T) {
 		}
 		if got := rr.freeToEnd(); got != tc.spcToEnd {
 			t.Fatalf("freeToEnd([%d, %d]) = %v, want %v", tc.r, tc.w, got, tc.spcToEnd)
+		}
+	}
+}
+
+func TestRingWriteThenRead(t *testing.T) {
+	type want struct {
+		b   []byte
+		out []byte
+	}
+	tt := []struct {
+		in   []byte
+		want []want
+	}{
+		{
+			[]byte("lynx"),
+			[]want{
+				{nil, []byte("lynx")},
+				{[]byte("acme"), []byte("acme")},
+				{[]byte("vim"), []byte("evim")},
+				{[]byte("x"), []byte("vimx")},
+			},
+		},
+	}
+	for _, tc := range tt {
+		var rr Ring
+		n, err := rr.Write(tc.in)
+		if err != nil {
+			t.Fatalf("Write: %v, want nil", err)
+		}
+		if n != len(tc.in) {
+			t.Fatalf("Write: %d, want %d", n, len(tc.in))
+		}
+		p := make([]byte, 8)
+		for _, w := range tc.want {
+			for _, b := range w.b {
+				if err := rr.WriteByte(b); err != nil {
+					t.Fatal(err)
+				}
+			}
+			n, err := rr.Read(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(p[:n], w.out) {
+				t.Fatalf("got: %q, want: %q", p[:n], w.out)
+			}
 		}
 	}
 }

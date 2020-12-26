@@ -5,6 +5,7 @@ import (
 	"io"
 )
 
+// Ring provides power-of-2 sized ring (circular) buffer
 type Ring struct {
 	buf  []byte
 	r, w int
@@ -16,7 +17,7 @@ func (r *Ring) Write(p []byte) (n int, err error) {
 	}
 	r.buf = make([]byte, roundupPowerOf2(len(p)+1))
 	r.r = 0
-	r.w = 0
+	r.w = len(p)
 	return copy(r.buf, p), nil
 }
 
@@ -46,10 +47,12 @@ func (r *Ring) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-func (r *Ring) WriteByte(c byte) {
+// WriteByte writes a single byte.
+func (r *Ring) WriteByte(c byte) error {
 	r.buf[r.w] = c
 	r.r = (r.r + 1) & (len(r.buf) - 1)
 	r.w = (r.w + 1) & (len(r.buf) - 1)
+	return nil
 }
 
 func (r *Ring) count() int {

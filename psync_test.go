@@ -22,6 +22,10 @@ import (
 
 type sliceEncoder []interface{}
 
+func (s *sliceEncoder) Write(p []byte) (n int, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
 func (s *sliceEncoder) Encode(e interface{}) error {
 	*s = append(*s, e)
 	return nil
@@ -303,6 +307,10 @@ func TestFunction(t *testing.T) {
 }
 
 type mergeDscEnc []interface{}
+
+func (s *mergeDscEnc) Write(p []byte) (n int, err error) {
+	panic("not implemented") // TODO: Implement
+}
 
 func (s *mergeDscEnc) Encode(e interface{}) error {
 	*s = append(*s, e)

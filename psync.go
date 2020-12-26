@@ -20,6 +20,7 @@ import (
 
 type Encoder interface {
 	Encode(e interface{}) error
+	Write(p []byte) (n int, err error)
 }
 
 type MergeType byte
@@ -82,9 +83,8 @@ func sendMergeDescs(r io.ReadSeeker, e *SrcFile, enc Encoder) error {
 	b := bufio.NewReader(r)
 	mh := md5.New()
 	rh := adler32.New()
-	tr := io.TeeReader(b, &rr)
 	// write initial window
-	if n, err := io.CopyN(rh, tr, int64(e.base.ChunkSize)); err != nil {
+	if n, err := io.CopyN(rh, io.TeeReader(b, &rr), int64(e.base.ChunkSize)); err != nil {
 		if err != io.EOF {
 			return err
 		}
@@ -115,6 +115,7 @@ func sendMergeDescs(r io.ReadSeeker, e *SrcFile, enc Encoder) error {
 	if err != nil {
 		return err
 	}
+	b.Reset(r)
 Loop:
 	for {
 		c, err := b.ReadByte()
@@ -128,20 +129,21 @@ Loop:
 		rh.Roll(c)
 		rr.WriteByte(c)
 		ch, ok := e.base.chunks[rh.Sum32()]
-		// enc.Encode(rh.Sum32())
-		if !ok {
-			continue
-		}
-		// Check for false positive adler32 matches
-		mh.Reset()
-		io.CopyN(mh, &rr, int64(e.base.ChunkSize))
-		if !bytes.Equal(mh.Sum(nil), ch.Sum) {
-			continue
+		if ok {
+			// Check for false positive adler32 matches
+			mh.Reset()
+			io.CopyN(mh, &rr, int64(e.base.ChunkSize))
+			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
+				enc.Encode(Blob)
+				enc.Encode(MergeBlob{Size: int64(e.base.ChunkSize)})
+				continue
+			}
 		}
 		_, err = r.Seek(int64(e.base.ChunkSize), io.SeekCurrent)
 		if err != nil {
 			return err
 		}
+		b.Reset(r)
 	}
 	return nil
 }
