@@ -196,42 +196,39 @@ func TestBring(t *testing.T) {
 	tests := []struct {
 		blockSize  int
 		write      string
+		read       string
 		writeBytes []byte
 		head       string
 		tail       string
 	}{
-		{4, "barbaz", []byte("fds"), "head", "tail"},
+		{4, "foobarbaz", "foob", []byte("fds"), "head", "tail"},
 	}
 	p := make([]byte, 32)
 	for _, tt := range tests {
 		r := NewBring(strings.NewReader(tt.write), tt.blockSize)
-		n, err := r.Read(p)
+		n, err := r.Read(p[:tt.blockSize])
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
-		t.Errorf("s: %q", p[:n])
-		r.Skip()
-		n, err = r.Head().Read(p)
-		if err != nil {
-			t.Error(err)
+		if got := string(p[:n]); got != tt.read {
+			t.Errorf("got: %q, want: %q", got, tt.read)
 		}
-		t.Errorf("head: %q", p[:n])
-		n, err = r.Tail().Read(p)
-		if err != nil {
-			t.Error(err)
+		tmp := make([]byte, n)
+		copy(tmp, p[:n])
+		for i, c := range tt.writeBytes {
+			err := r.buf.WriteByte(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tr := r.Tail()
+			n, err := tr.Read(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tmp = append(tmp, c)
+			if got, want := string(p[:n]), string(tmp[i+1:]); got != want {
+				t.Errorf("got: %q, want: %q", got, want)
+			}
 		}
-		t.Errorf("tail: %q", p[:n])
-		r.buf.WriteByte('x')
-		n, err = r.Tail().Read(p)
-		if err != nil {
-			t.Error(err)
-		}
-		t.Errorf("tail: %q", p[:n])
-		n, err = r.Head().Read(p)
-		if err != nil {
-			t.Error(err)
-		}
-		t.Errorf("head: %q", p[:n])
-		// t.Errorf("(%s): expected %s, actual %s", tt.given, tt.expected, actual)
 	}
 }
