@@ -146,6 +146,14 @@ func (b *Bring) Head() io.Reader {
 	return &b.tmp
 }
 
+func (b *Bring) HeadLen() int {
+	len := b.buf.Len() - b.blockSize
+	if len < 0 {
+		len = 0
+	}
+	return len
+}
+
 func (b *Bring) Tail() io.Reader {
 	p := b.buf.Bytes()
 	b.tmp.Reset(p[len(p)-b.blockSize:])

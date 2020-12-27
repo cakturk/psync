@@ -195,19 +195,51 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 	return nil
 }
 
+//
+// x x x x x x x x x x x x x x x x x x x x x x
+//       |         0     1
 func sendMergeDescs2(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 	chunkSize := int64(e.base.ChunkSize)
 	cr := NewBring(r, int(chunkSize))
 	rh := adler32.New()
 	mh := md5.New()
-	_ = mh
+Outer:
 	for {
+		// fill in the buffer
 		_, err := io.CopyN(rh, &cr, chunkSize)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			return err
+		}
+		ch, ok := e.base.chunks[rh.Sum32()]
+		if ok {
+			mh.Reset()
+			io.CopyN(mh, cr.Tail(), chunkSize)
+			if bytes.Equal(mh.Sum(nil), ch.Sum) {
+			}
+			continue
+		}
+		for i := int64(0); i < chunkSize; i++ {
+			c, err := cr.r.ReadByte()
+			if err != nil {
+				return err
+			}
+			rh.Roll(c)
+			ch, ok = e.base.chunks[rh.Sum32()]
+			if !ok {
+				continue
+			}
+			mh.Reset()
+			io.CopyN(mh, cr.Tail(), chunkSize)
+			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
+				continue
+			}
+			// block match
+			continue Outer
+		}
+		if cr.HeadLen() > 0 {
 		}
 	}
 	return nil
