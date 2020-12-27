@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -188,5 +189,49 @@ func TestWriteByte(t *testing.T) {
 		if got := string(p[:n]); got != tc.want {
 			t.Fatalf("Read() = %q, want %q", got, tc.want)
 		}
+	}
+}
+
+func TestBring(t *testing.T) {
+	tests := []struct {
+		blockSize  int
+		write      string
+		writeBytes []byte
+		head       string
+		tail       string
+	}{
+		{4, "barbaz", []byte("fds"), "head", "tail"},
+	}
+	p := make([]byte, 32)
+	for _, tt := range tests {
+		r := NewBring(strings.NewReader(tt.write), tt.blockSize)
+		n, err := r.Read(p)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Errorf("s: %q", p[:n])
+		r.Skip()
+		n, err = r.Head().Read(p)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Errorf("head: %q", p[:n])
+		n, err = r.Tail().Read(p)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Errorf("tail: %q", p[:n])
+		r.buf.WriteByte('x')
+		n, err = r.Tail().Read(p)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Errorf("tail: %q", p[:n])
+		n, err = r.Head().Read(p)
+		if err != nil {
+			t.Error(err)
+		}
+		t.Errorf("head: %q", p[:n])
+		// t.Errorf("(%s): expected %s, actual %s", tt.given, tt.expected, actual)
 	}
 }

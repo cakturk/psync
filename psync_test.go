@@ -418,9 +418,9 @@ func TestMergeDesc(t *testing.T) {
 			ID:        0,
 			ChunkSize: 8,
 			Size:      0,
-			chunks: map[uint32]ChunkWithID{
+			chunks: map[uint32]ChunkSrc{
 				0: {
-					ID: 0,
+					id: 0,
 					Chunk: Chunk{
 						Rsum: 0,
 						Sum:  []byte{},

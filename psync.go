@@ -126,7 +126,7 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 	Check:
 		prevChunkID = chunkID
 		ch, ok := e.base.chunks[rh.Sum32()]
-		chunkID = ch.ID
+		chunkID = ch.id
 		if ok {
 			// Check for false positive adler32 matches
 			mh.Reset()
@@ -142,7 +142,7 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 					firstChunkID = -1
 				}
 				if firstChunkID < 0 {
-					firstChunkID = ch.ID
+					firstChunkID = ch.id
 				}
 				_, err = r.Seek(chunkSize, io.SeekCurrent)
 				if err != nil {
@@ -220,8 +220,9 @@ type SrcFile struct {
 	base DstFile // used by sender only
 }
 
-type ChunkWithID struct {
-	ID int // Chunk ID (index of chunk)
+type ChunkSrc struct {
+	id   int // Chunk ID (index of chunk)
+	size int
 	Chunk
 }
 
@@ -230,7 +231,7 @@ type DstFile struct {
 	ChunkSize int
 	Size      int64 // 0 means this is a new file
 
-	chunks map[uint32]ChunkWithID // used by sender
+	chunks map[uint32]ChunkSrc // used by sender
 }
 
 func (b *DstFile) NumChunks() int {

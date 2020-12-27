@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"io"
 )
@@ -106,4 +108,50 @@ func roundupPowerOf2(n int) int {
 	v |= v >> 16
 	v++
 	return int(v)
+}
+
+func NewBring(r io.Reader, blockSize int) Bring {
+	return Bring{
+		r:         bufio.NewReader(r),
+		blockSize: blockSize,
+	}
+}
+
+type Bring struct {
+	r         *bufio.Reader
+	buf       bytes.Buffer
+	tmp       bytes.Reader
+	blockSize int
+}
+
+func (b *Bring) Read(p []byte) (n int, err error) {
+	r := io.TeeReader(b.r, &b.buf)
+	return r.Read(p)
+}
+
+// ReadByte reads and returns the next byte from the buffer.
+func (b *Bring) ReadByte() (byte, error) {
+	c, err := b.r.ReadByte()
+	if err != nil {
+		return c, err
+	}
+	err = b.buf.WriteByte(c)
+	return c, err
+}
+
+func (b *Bring) Head() io.Reader {
+	p := b.buf.Bytes()
+	b.buf.Next(len(p) - b.blockSize)
+	b.tmp.Reset(p[:len(p)-b.blockSize])
+	return &b.tmp
+}
+
+func (b *Bring) Tail() io.Reader {
+	p := b.buf.Bytes()
+	b.tmp.Reset(p[len(p)-b.blockSize:])
+	return &b.tmp
+}
+
+func (b *Bring) Skip() {
+	b.buf.Next(b.buf.Len() - b.blockSize)
 }
