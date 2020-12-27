@@ -390,6 +390,7 @@ func TestDoChunkFile(t *testing.T) {
 type mergeDscEnc []interface{}
 
 func (s *mergeDscEnc) Write(p []byte) (n int, err error) {
+	log.Printf("write invoked: %d, %q", len(p), p)
 	*s = append(*s, p)
 	return len(p), nil
 }
@@ -400,7 +401,6 @@ func (s *mergeDscEnc) Encode(e interface{}) error {
 }
 
 func TestMergeDesc(t *testing.T) {
-	// f, err := os.Open("/etc/login.defs")
 	f := strings.NewReader(orig)
 	var err error
 	if err != nil {

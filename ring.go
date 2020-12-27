@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"log"
 )
 
 // Ring provides power-of-2 sized ring (circular) buffer
@@ -143,21 +144,32 @@ func (b *Bring) Head() io.Reader {
 	p := b.buf.Bytes()
 	b.buf.Next(len(p) - b.blockSize)
 	b.tmp.Reset(p[:len(p)-b.blockSize])
+	log.Printf("Bring:Head: %q", p[:len(p)-b.blockSize])
 	return &b.tmp
 }
 
-func (b *Bring) HeadLen() int {
+func (b *Bring) HeadLen() int64 {
 	len := b.buf.Len() - b.blockSize
 	if len < 0 {
 		len = 0
 	}
-	return len
+	return int64(len)
 }
 
 func (b *Bring) Tail() io.Reader {
 	p := b.buf.Bytes()
 	b.tmp.Reset(p[len(p)-b.blockSize:])
 	return &b.tmp
+}
+
+func (b *Bring) Buffered() io.Reader {
+	p := b.buf.Bytes()
+	b.tmp.Reset(p)
+	return &b.tmp
+}
+
+func (b *Bring) BufferedLen() int64 {
+	return int64(b.buf.Len())
 }
 
 func (b *Bring) Skip() {

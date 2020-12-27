@@ -197,24 +197,35 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 
 //
 // x x x x x x x x x x x x x x x x x x x x x x
-//       |         0     1
+//       |   0     1
+// TODO: calc merge offsets, coalesce concecutive reusable blocks into single
+// merge descriptor.
 func sendMergeDescs2(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
+	if e.base.Size == 0 {
+		enc.Encode(MergeDesc{ID: id, Typ: New, TotalSize: e.Size})
+		_, err := io.Copy(enc, r)
+		return err
+	}
 	chunkSize := int64(e.base.ChunkSize)
 	cr := NewBring(r, int(chunkSize))
 	rh := adler32.New()
 	mh := md5.New()
 	var err error
+	enc.Encode(MergeDesc{ID: id, Typ: Partial})
+	log.Printf("chunkSize: %d", chunkSize)
 Outer:
-	for err != nil {
+	for err == nil {
 		var n int64
 		// fill in the buffer
 		n, err = io.CopyN(rh, &cr, chunkSize)
 		if err != nil {
 			if err != io.EOF {
+				log.Printf("0 break: %d", cr.HeadLen())
 				return err
 			}
 			if n == 0 {
-				return nil
+				log.Printf("1 break: %d", cr.HeadLen())
+				break
 			}
 		}
 		ch, ok := e.base.chunks[rh.Sum32()]
@@ -222,15 +233,24 @@ Outer:
 			mh.Reset()
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Sum) {
+				enc.Encode(ReuseExisting)
+				enc.Encode(MergeReuse{
+					ChunkID:  ch.id,
+					NrChunks: 1,
+					Off:      0,
+				})
 				continue
 			}
 		}
 		for i := int64(0); i < chunkSize; i++ {
-			c, err := cr.r.ReadByte()
+			c, err := cr.ReadByte()
+			log.Printf("%c", c)
 			if err != nil {
 				if err == io.EOF {
-					return nil
+					log.Printf("2 break: %d", cr.HeadLen())
+					break
 				}
+				log.Printf("3 break: %d", cr.HeadLen())
 				return err
 			}
 			rh.Roll(c)
@@ -240,15 +260,55 @@ Outer:
 			}
 			mh.Reset()
 			io.CopyN(mh, cr.Tail(), chunkSize)
-			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
-				continue
+			if bytes.Equal(mh.Sum(nil), ch.Sum) {
+				// block matched, send head bytes at first
+				if i > 0 {
+					enc.Encode(Blob)
+					enc.Encode(MergeBlob{
+						Size: cr.HeadLen(),
+						Off:  0,
+					})
+					_, err = io.Copy(enc, cr.Head())
+					if err != nil {
+						log.Printf("4 break: %d", cr.HeadLen())
+						return err
+					}
+				}
+				enc.Encode(ReuseExisting)
+				enc.Encode(MergeReuse{
+					ChunkID:  ch.id,
+					NrChunks: 1,
+					Off:      0,
+				})
+				continue Outer
 			}
-			// block matched
-			continue Outer
 		}
-		if cr.HeadLen() > 0 {
+		enc.Encode(Blob)
+		log.Printf("headlen: %d, %q", cr.HeadLen(), cr.buf.Bytes()[:cr.buf.Len()])
+		enc.Encode(MergeBlob{
+			Size: cr.HeadLen(),
+			Off:  0,
+		})
+		n, err = io.Copy(enc, cr.Head())
+		log.Printf("headlenPost: %d, %q, written: %d", cr.HeadLen(), cr.buf.Bytes()[:cr.buf.Len()], n)
+		if err != nil {
+			log.Printf("5 break: %d", cr.HeadLen())
+			return err
 		}
 	}
+	if len := cr.BufferedLen(); len > 0 {
+		enc.Encode(Blob)
+		enc.Encode(MergeBlob{
+			Size: len,
+			Off:  0,
+		})
+		_, err = io.Copy(enc, cr.Buffered())
+		if err != nil {
+			log.Printf("6 break: %d", cr.HeadLen())
+			return err
+		}
+	}
+	log.Printf("prologue point: %d", cr.HeadLen())
 	return nil
 }
 
