@@ -15,10 +15,19 @@ func (r *Ring) Write(p []byte) (n int, err error) {
 	if len(p) <= 2 {
 		return 0, errors.New("ring: short write")
 	}
-	r.buf = make([]byte, roundupPowerOf2(len(p)+1))
+	r.buf = make([]byte, roundupPowerOf2(len(p)*2))
 	r.r = 0
 	r.w = len(p)
 	return copy(r.buf, p), nil
+}
+
+// Discard skips the next n bytes
+func (r *Ring) Discard(n int) (err error) {
+	if n > r.count() {
+		return errors.New("ring: short buffer")
+	}
+	r.r = (r.r + n) & (len(r.buf) - 1)
+	return nil
 }
 
 func (r *Ring) Read(p []byte) (n int, err error) {

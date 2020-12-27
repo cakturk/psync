@@ -73,6 +73,9 @@ type Sender struct {
 
 var errShortRead = errors.New("unexpected EOF")
 
+//
+// x x x x x x x x x x x x x x x x x x x x x x
+//       |         0     1
 func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 	if e.base.Size == 0 {
 		enc.Encode(MergeDesc{ID: id, Typ: New, TotalSize: e.Size})
@@ -93,37 +96,24 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 		}
 	}
 	var (
-		blob      MergeBlob
-		err       error
-		chunkOff  int64
-		chunkSize = int64(e.base.ChunkSize)
+		// err       error
+		chunkOff     int64
+		chunkID      int
+		prevChunkID  int
+		firstChunkID = -1
+		chunkSize    = int64(e.base.ChunkSize)
 	)
-	ch, ok := e.base.chunks[rh.Sum32()]
-	if !ok {
-		blob = MergeBlob{Size: int64(e.base.ChunkSize), Off: chunkOff}
-		enc.Encode(MergeDesc{ID: id, Typ: Partial})
-		enc.Encode(Blob)
-		enc.Encode(blob)
-		_, err := io.CopyN(enc, &rr, int64(e.base.ChunkSize))
-		if err != nil {
-			return err
-		}
-		chunkOff += chunkSize
-		goto Loop
-	}
-	// Check for false positive adler32 matches
-	mh.Reset()
-	io.CopyN(mh, &rr, int64(e.base.ChunkSize))
-	if !bytes.Equal(mh.Sum(nil), ch.Sum) {
-	}
-	_, err = r.Seek(int64(e.base.ChunkSize), io.SeekCurrent)
-	if err != nil {
-		return err
-	}
-	b.Reset(r)
-Loop:
+	enc.Encode(MergeDesc{ID: id, Typ: Partial})
+	chunkOff += chunkSize
 	for {
-		c, err := b.ReadByte()
+		var (
+			c   byte
+			err error
+		)
+		goto Check
+	LoopStart:
+		chunkOff += chunkSize
+		c, err = b.ReadByte()
 		if err != nil {
 			log.Printf("sendDirections: c: %d, %v", c, err)
 			if err == io.EOF {
@@ -133,36 +123,74 @@ Loop:
 		}
 		rh.Roll(c)
 		rr.WriteByte(c)
+	Check:
+		prevChunkID = chunkID
 		ch, ok := e.base.chunks[rh.Sum32()]
+		chunkID = ch.ID
 		if ok {
 			// Check for false positive adler32 matches
 			mh.Reset()
-			io.CopyN(mh, &rr, int64(e.base.ChunkSize))
-			if !bytes.Equal(mh.Sum(nil), ch.Sum) {
-				enc.Encode(Blob)
-				enc.Encode(MergeBlob{
-					Size: chunkSize,
-					Off:  chunkOff,
-				})
-				_, err := io.CopyN(enc, &rr, int64(e.base.ChunkSize))
+			io.CopyN(mh, &rr, chunkSize)
+			if bytes.Equal(mh.Sum(nil), ch.Sum) {
+				if firstChunkID >= 0 && chunkID-prevChunkID > 1 {
+					enc.Encode(ReuseExisting)
+					enc.Encode(MergeReuse{
+						ChunkID:  firstChunkID,
+						NrChunks: prevChunkID + 1 - firstChunkID,
+						Off:      chunkOff,
+					})
+					firstChunkID = -1
+				}
+				if firstChunkID < 0 {
+					firstChunkID = ch.ID
+				}
+				_, err = r.Seek(chunkSize, io.SeekCurrent)
 				if err != nil {
 					return err
 				}
-				chunkOff += chunkSize
+				b.Reset(r)
 				continue
 			}
+		}
+		if firstChunkID >= 0 {
 			enc.Encode(ReuseExisting)
 			enc.Encode(MergeReuse{
-				ChunkID:  ch.ID,
-				NrChunks: 0,
+				ChunkID:  firstChunkID,
+				NrChunks: prevChunkID + 1 - firstChunkID,
 				Off:      chunkOff,
 			})
-			_, err = r.Seek(int64(e.base.ChunkSize), io.SeekCurrent)
-			if err != nil {
+			firstChunkID = -1
+		}
+		enc.Encode(Blob)
+		enc.Encode(MergeBlob{
+			Size: chunkSize,
+			Off:  chunkOff,
+		})
+		_, err = io.CopyN(enc, &rr, chunkSize)
+		if err != nil {
+			return err
+		}
+		n, err := io.CopyN(rh, io.TeeReader(b, &rr), chunkSize)
+		if err != nil {
+			if err != io.EOF {
 				return err
 			}
-			b.Reset(r)
+			if n == 0 {
+				return errShortRead
+			}
 		}
+		if err := rr.Discard(int(n)); err != nil {
+			return err
+		}
+		goto LoopStart
+	}
+	if firstChunkID >= 0 {
+		enc.Encode(ReuseExisting)
+		enc.Encode(MergeReuse{
+			ChunkID:  firstChunkID,
+			NrChunks: chunkID - firstChunkID,
+			Off:      chunkOff,
+		})
 	}
 	return nil
 }

@@ -107,8 +107,8 @@ func TestRingWrite(t *testing.T) {
 		{nil, 0, true},
 		{[]byte{}, 0, true},
 		{[]byte{1}, 0, true},
-		{make([]byte, 99), 128, false},
-		{make([]byte, 300), 512, false},
+		{make([]byte, 99), 256, false},
+		{make([]byte, 300), 1024, false},
 		{make([]byte, 1024), 2048, false},
 	}
 	for _, tc := range tt {
