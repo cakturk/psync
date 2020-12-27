@@ -195,6 +195,24 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 	return nil
 }
 
+func sendMergeDescs2(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
+	chunkSize := int64(e.base.ChunkSize)
+	cr := NewBring(r, int(chunkSize))
+	rh := adler32.New()
+	mh := md5.New()
+	_ = mh
+	for {
+		_, err := io.CopyN(rh, &cr, chunkSize)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Sender) sendDirections(id int, e *SrcFile) error {
 	if e.Size == 0 {
 		return nil
