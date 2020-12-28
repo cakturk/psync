@@ -356,36 +356,26 @@ func (d *descEncoder) setPrevID(id int) { d.previousID = id + 1 }
 func (d *descEncoder) resetPrevID()     { d.setPrevID(-1) }
 
 func (d *descEncoder) sendReuse(id int) int64 {
-	numChunks := 1
-	prevID, ok := d.prevID()
-	if ok {
-		if id-prevID == 1 {
-			d.setPrevID(id)
-			return d.blockSize
-		}
-		d.flushReuseChunks()
-	} else {
+	prevID, set := d.prevID()
+	if !set {
 		d.setPrevID(id)
 		d.firstID = id
 		return d.blockSize
 	}
-	d.enc.Encode(ReuseExisting)
-	d.enc.Encode(MergeReuse{
-		ChunkID:  id,
-		NrChunks: numChunks,
-		Off:      d.off,
-	})
-	d.off += d.blockSize * int64(numChunks)
+	if id-prevID != 1 {
+		d.flushReuseChunks()
+		d.firstID = id
+	}
+	d.setPrevID(id)
 	return d.blockSize
 }
 
 func (d *descEncoder) flushReuseChunks() {
-	numChunks := 1
 	prevID, ok := d.prevID()
 	if !ok {
 		return
 	}
-	numChunks = prevID - d.firstID + 1
+	numChunks := prevID - d.firstID + 1
 	d.enc.Encode(ReuseExisting)
 	d.enc.Encode(MergeReuse{
 		ChunkID:  d.firstID,

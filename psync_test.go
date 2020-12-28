@@ -504,3 +504,23 @@ func TestExample(t *testing.T) {
 	// over the lazy do: checksum 336a05f1
 	// ver the lazy dog: checksum 326205e9
 }
+
+func TestDescEnc(t *testing.T) {
+	enc := &mergeDscEnc{}
+	br := NewBring(strings.NewReader(orig), 4)
+	d := descEncoder{
+		enc:       enc,
+		r:         &br,
+		blockSize: 4,
+	}
+	// d.sendBlob()
+	// d.sendBlob()
+	d.sendReuse(2)
+	d.sendReuse(3)
+	d.sendReuse(4)
+	// d.sendReuse(8)
+	d.sendBlob()
+	// d.flushReuseChunks()
+	// d.sendBlob()
+	t.Errorf("%#v", enc)
+}
