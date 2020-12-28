@@ -142,10 +142,19 @@ func (b *Bring) ReadByte() (byte, error) {
 
 func (b *Bring) Head() io.Reader {
 	p := b.buf.Bytes()
+	n := len(p) - b.blockSize
+	if n <= 0 {
+		return &b.tmp
+	}
 	b.buf.Next(len(p) - b.blockSize)
 	b.tmp.Reset(p[:len(p)-b.blockSize])
 	log.Printf("Bring:Head: %q", p[:len(p)-b.blockSize])
 	return &b.tmp
+}
+
+func (b *Bring) HeadPeek() []byte {
+	p := b.buf.Bytes()
+	return p[:len(p)-b.blockSize]
 }
 
 func (b *Bring) HeadLen() int64 {
@@ -160,6 +169,11 @@ func (b *Bring) Tail() io.Reader {
 	p := b.buf.Bytes()
 	b.tmp.Reset(p[len(p)-b.blockSize:])
 	return &b.tmp
+}
+
+func (b *Bring) TailPeek() []byte {
+	p := b.buf.Bytes()
+	return p[len(p)-b.blockSize:]
 }
 
 func (b *Bring) Buffered() io.Reader {
