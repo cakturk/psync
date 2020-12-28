@@ -306,7 +306,7 @@ func TestFunction(t *testing.T) {
 	_ = b
 }
 
-var (
+const (
 	// 54 bytes
 	orig = `01234567890abcdef
 ghijklmnopqrstuvwxyz
@@ -406,31 +406,34 @@ func TestMergeDesc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	digest, err := hex.DecodeString("2e9ec317e197819358fbc43afca7d837")
+	if err != nil {
+		t.Fatal(err)
+	}
 	src := &SrcFile{
-		Path:      "",
-		Uid:       0,
-		Gid:       0,
-		Mode:      0,
-		Size:      int64(len(orig)),
-		Mtime:     time.Time{},
-		chunkSize: 0,
+		Path:  "",
+		Uid:   0,
+		Gid:   0,
+		Mode:  0,
+		Size:  int64(len(orig)),
+		Mtime: time.Time{},
 		base: DstFile{
 			ID:        0,
 			ChunkSize: 8,
-			Size:      0,
+			Size:      1,
 			chunks: map[uint32]ChunkSrc{
-				0: {
+				0x071c019d: {
 					id: 0,
 					Chunk: Chunk{
-						Rsum: 0,
-						Sum:  []byte{},
+						Rsum: 0x071c019d,
+						Sum:  digest,
 					},
 				},
 			},
 		},
 	}
 	enc := &mergeDscEnc{}
-	if err = sendMergeDescs(f, 22, src, enc); err != nil {
+	if err = sendMergeDescs2(f, 22, src, enc); err != nil {
 		t.Fatal(err)
 	}
 	t.Fatalf("%#v", enc)
@@ -518,7 +521,7 @@ func TestDescEnc(t *testing.T) {
 	d.sendReuse(2)
 	d.sendReuse(3)
 	d.sendReuse(4)
-	// d.sendReuse(8)
+	d.sendReuse(8)
 	d.sendBlob()
 	// d.flushReuseChunks()
 	// d.sendBlob()

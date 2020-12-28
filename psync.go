@@ -226,15 +226,16 @@ Outer:
 				break
 			}
 		}
-		log.Printf("head0: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
+		log.Printf("head0: %q, tail: %q, adler: %x", cr.HeadPeek(), cr.TailPeek(), rh.Sum32())
 		ch, ok := e.base.chunks[rh.Sum32()]
 		if ok {
-			mh.Reset()
+			log.Println("wow I feel good!")
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Sum) {
 				de.sendReuse(ch.id)
 				continue
 			}
+			log.Println("but not sooo good")
 		}
 		for i := int64(0); i < chunkSize; i++ {
 			c, err := cr.ReadByte()
@@ -242,7 +243,7 @@ Outer:
 			if err != nil {
 				if err == io.EOF {
 					log.Printf("2 break: %d", cr.HeadLen())
-					break
+					break Outer
 				}
 				log.Printf("3 break: %d", cr.HeadLen())
 				return err
@@ -281,14 +282,12 @@ Outer:
 			return err
 		}
 	}
-	if len := cr.BufferedLen(); len > 0 {
-		err = de.sendBlob()
-		if err != nil {
-			log.Printf("6 break: %d", cr.HeadLen())
-			return err
-		}
+	err = de.flush()
+	if err != nil {
+		log.Printf("6 break: %d", cr.HeadLen())
+		return err
 	}
-	log.Printf("prologue point: %d", cr.HeadLen())
+	log.Printf("prologue point: head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 	return nil
 }
 
@@ -304,6 +303,7 @@ type descEncoder struct {
 	firstID    int
 }
 
+// TODO: Occasionally tries to send 1-byte blobs.
 func (d *descEncoder) sendBlob() error {
 	if _, ok := d.prevID(); ok {
 		err := d.flushReuseChunks()
@@ -339,6 +339,7 @@ func (d *descEncoder) setPrevID(id int) { d.previousID = id + 1 }
 func (d *descEncoder) resetPrevID()     { d.setPrevID(-1) }
 
 func (d *descEncoder) sendReuse(id int) error {
+	d.r.Skip(int(d.blockSize))
 	prevID, set := d.prevID()
 	if !set {
 		d.setPrevID(id)
@@ -373,6 +374,31 @@ func (d *descEncoder) flushReuseChunks() error {
 	d.off += d.blockSize * int64(numChunks)
 	d.resetPrevID()
 	return err
+}
+
+func (d *descEncoder) flush() error {
+	err := d.flushReuseChunks()
+	if err != nil {
+		return err
+	}
+	if d.r.BufferedLen() <= 0 {
+		return nil
+	}
+	err = d.enc.Encode(Blob)
+	if err != nil {
+		return err
+	}
+	err = d.enc.Encode(MergeBlob{
+		Size: d.r.BufferedLen(),
+		Off:  d.off,
+	})
+	if err != nil {
+		return err
+	}
+	n, err := io.Copy(d.enc, d.r.Buffered())
+	d.off += n
+	return err
+	panic("flush not implemented")
 }
 
 type Sender struct {

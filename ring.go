@@ -186,6 +186,7 @@ func (b *Bring) BufferedLen() int64 {
 	return int64(b.buf.Len())
 }
 
-func (b *Bring) Skip() {
-	b.buf.Next(b.buf.Len() - b.blockSize)
+func (b *Bring) Skip(n int) {
+	p := b.buf.Next(n)
+	log.Printf("skip(%d): %q", n, p)
 }
