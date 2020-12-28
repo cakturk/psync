@@ -64,13 +64,6 @@ type MergeBlob struct {
 	Size, Off int64
 }
 
-type Sender struct {
-	r        io.ReadWriter
-	enc      Encoder
-	root     string
-	srcFiles []SrcFile
-}
-
 var errShortRead = errors.New("unexpected EOF")
 
 //
@@ -323,7 +316,7 @@ type descEncoder struct {
 	r              *Bring
 	blockSize, off int64
 
-	// use offsetting to make use of zero value
+	// use offsetting to make use of zero value useful,
 	// so every time we use this variable we need
 	// to subtract by 1 (offset).
 	previousID int
@@ -384,6 +377,13 @@ func (d *descEncoder) flushReuseChunks() {
 	})
 	d.off += d.blockSize * int64(numChunks)
 	d.resetPrevID()
+}
+
+type Sender struct {
+	r        io.ReadWriter
+	enc      Encoder
+	root     string
+	srcFiles []SrcFile
 }
 
 func (s *Sender) sendDirections(id int, e *SrcFile) error {
