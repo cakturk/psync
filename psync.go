@@ -204,6 +204,11 @@ func sendMergeDescs2(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
 	rh := adler32.New()
 	mh := md5.New()
 	var err error
+	de := descEncoder{
+		enc:       enc,
+		r:         &cr,
+		blockSize: chunkSize,
+	}
 	enc.Encode(MergeDesc{ID: id, Typ: Partial})
 	log.Printf("chunkSize: %d", chunkSize)
 Outer:
@@ -227,12 +232,7 @@ Outer:
 			mh.Reset()
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Sum) {
-				enc.Encode(ReuseExisting)
-				enc.Encode(MergeReuse{
-					ChunkID:  ch.id,
-					NrChunks: 1,
-					Off:      0,
-				})
+				de.sendReuse(ch.id)
 				continue
 			}
 		}
@@ -257,38 +257,24 @@ Outer:
 			if bytes.Equal(mh.Sum(nil), ch.Sum) {
 				// block matched, send head bytes at first
 				if i > 0 {
-					enc.Encode(Blob)
-					enc.Encode(MergeBlob{
-						Size: cr.HeadLen(),
-						Off:  0,
-					})
-					_, err = io.Copy(enc, cr.Head())
+					err = de.sendBlob()
 					if err != nil {
 						log.Printf("4 break: %d", cr.HeadLen())
 						return err
 					}
 				}
-				enc.Encode(ReuseExisting)
-				enc.Encode(MergeReuse{
-					ChunkID:  ch.id,
-					NrChunks: 1,
-					Off:      0,
-				})
+				de.sendReuse(ch.id)
 				continue Outer
 			}
 		}
-		enc.Encode(Blob)
+		err = de.sendBlob()
+		// enc.Encode(Blob)
 		// log.Printf(
 		// 	"headlen: %d, head: %q, tail: %q",
 		// 	cr.HeadLen(), cr.buf.Bytes()[:cr.buf.Len()-cr.blockSize],
 		// 	cr.buf.Bytes()[cr.buf.Len()-cr.blockSize:],
 		// )
 		log.Printf("head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
-		enc.Encode(MergeBlob{
-			Size: cr.HeadLen(),
-			Off:  0,
-		})
-		n, err = io.Copy(enc, cr.Head())
 		// log.Printf("headlenPost: %d, %q, written: %d", cr.HeadLen(), cr.buf.Bytes()[:cr.buf.Len()], n)
 		if err != nil {
 			log.Printf("5 break: %d", cr.HeadLen())
@@ -296,12 +282,7 @@ Outer:
 		}
 	}
 	if len := cr.BufferedLen(); len > 0 {
-		enc.Encode(Blob)
-		enc.Encode(MergeBlob{
-			Size: len,
-			Off:  0,
-		})
-		_, err = io.Copy(enc, cr.Buffered())
+		err = de.sendBlob()
 		if err != nil {
 			log.Printf("6 break: %d", cr.HeadLen())
 			return err
@@ -323,18 +304,27 @@ type descEncoder struct {
 	firstID    int
 }
 
-func (d *descEncoder) sendBlob() (int64, error) {
+func (d *descEncoder) sendBlob() error {
 	if _, ok := d.prevID(); ok {
-		d.flushReuseChunks()
+		err := d.flushReuseChunks()
+		if err != nil {
+			return err
+		}
 	}
-	d.enc.Encode(Blob)
-	d.enc.Encode(MergeBlob{
+	err := d.enc.Encode(Blob)
+	if err != nil {
+		return err
+	}
+	err = d.enc.Encode(MergeBlob{
 		Size: d.r.HeadLen(),
 		Off:  d.off,
 	})
+	if err != nil {
+		return err
+	}
 	n, err := io.Copy(d.enc, d.r.Head())
 	d.off += n
-	return n, err
+	return err
 }
 
 func (d *descEncoder) prevID() (id int, set bool) {
@@ -348,35 +338,41 @@ func (d *descEncoder) prevID() (id int, set bool) {
 func (d *descEncoder) setPrevID(id int) { d.previousID = id + 1 }
 func (d *descEncoder) resetPrevID()     { d.setPrevID(-1) }
 
-func (d *descEncoder) sendReuse(id int) int64 {
+func (d *descEncoder) sendReuse(id int) error {
 	prevID, set := d.prevID()
 	if !set {
 		d.setPrevID(id)
 		d.firstID = id
-		return d.blockSize
+		return nil
 	}
 	if id-prevID != 1 {
-		d.flushReuseChunks()
+		if err := d.flushReuseChunks(); err != nil {
+			return err
+		}
 		d.firstID = id
 	}
 	d.setPrevID(id)
-	return d.blockSize
+	return nil
 }
 
-func (d *descEncoder) flushReuseChunks() {
+func (d *descEncoder) flushReuseChunks() error {
 	prevID, ok := d.prevID()
 	if !ok {
-		return
+		return nil
 	}
 	numChunks := prevID - d.firstID + 1
-	d.enc.Encode(ReuseExisting)
-	d.enc.Encode(MergeReuse{
+	err := d.enc.Encode(ReuseExisting)
+	if err != nil {
+		return nil
+	}
+	err = d.enc.Encode(MergeReuse{
 		ChunkID:  d.firstID,
 		NrChunks: numChunks,
 		Off:      d.off,
 	})
 	d.off += d.blockSize * int64(numChunks)
 	d.resetPrevID()
+	return err
 }
 
 type Sender struct {
