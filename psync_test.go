@@ -135,7 +135,7 @@ func TestMergeDesc2(t *testing.T) {
 	digest := func(s string) []byte {
 		m, err := hex.DecodeString(s)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("failed to decode string: %q", s)
 		}
 		return m
 	}
