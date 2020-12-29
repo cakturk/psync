@@ -296,7 +296,7 @@ type descEncoder struct {
 	r              *Bring
 	blockSize, off int64
 
-	// use offsetting to make use of zero value useful,
+	// use offsetting to make the zero value useful,
 	// so every time we use this variable we need
 	// to subtract by 1 (offset).
 	previousID int
