@@ -154,7 +154,11 @@ func (b *Bring) Head() io.Reader {
 
 func (b *Bring) HeadPeek() []byte {
 	p := b.buf.Bytes()
-	return p[:len(p)-b.blockSize]
+	n := len(p) - b.blockSize
+	if n <= 0 {
+		n = 0
+	}
+	return p[:n]
 }
 
 func (b *Bring) HeadLen() int64 {
@@ -167,13 +171,21 @@ func (b *Bring) HeadLen() int64 {
 
 func (b *Bring) Tail() io.Reader {
 	p := b.buf.Bytes()
-	b.tmp.Reset(p[len(p)-b.blockSize:])
+	n := len(p) - b.blockSize
+	if n < 0 {
+		n = 0
+	}
+	b.tmp.Reset(p[n:])
 	return &b.tmp
 }
 
 func (b *Bring) TailPeek() []byte {
 	p := b.buf.Bytes()
-	return p[len(p)-b.blockSize:]
+	n := len(p) - b.blockSize
+	if n < 0 {
+		n = 0
+	}
+	return p[n:]
 }
 
 func (b *Bring) Buffered() io.Reader {

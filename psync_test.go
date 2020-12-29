@@ -3,16 +3,11 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"crypto/md5"
-	"encoding/gob"
 	"encoding/hex"
-	"fmt"
 	"hash"
 	stdadler32 "hash/adler32"
 	"io"
-	"io/ioutil"
 	"log"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -31,283 +26,8 @@ func (s *sliceEncoder) Encode(e interface{}) error {
 	return nil
 }
 
-func TestChunkFile(t *testing.T) {
-	// var buf bytes.Buffer
-	// enc := gob.NewEncoder(&buf)
-	enc := &sliceEncoder{}
-	if err := chunkFile("foo", enc, 4); err != nil {
-		t.Fatal(err)
-	}
-	t.Errorf("%#v", enc)
-}
-
-func TestMd(t *testing.T) {
-	m := md5.New()
-	s := m.Sum(nil)
-	t.Errorf("%#v", hex.EncodeToString(s))
-}
-
-// x x x | x x x | x _ _ |
-func TestHowMany(t *testing.T) {
-	hm := func(x, y int) int {
-		return ((x) + ((y) - 1)) / (y)
-	}
-	r := hm(6, 3)
-	t.Errorf("r: %d", r)
-}
-
-func TestNilFieldEnc(t *testing.T) {
-	type Foo struct {
-		A int
-		b *Foo
-	}
-	var b bytes.Buffer
-	enc := gob.NewEncoder(&b)
-	err := enc.Encode(Foo{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = enc.Encode(Foo{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = enc.Encode(Foo{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Error(b.Len())
-}
-
-func TestSyncEnt(t *testing.T) {
-	var b bytes.Buffer
-	enc := gob.NewEncoder(&b)
-	err := enc.Encode(SrcFile{})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestEnc(t *testing.T) {
-	var b bytes.Buffer
-	enc := gob.NewEncoder(&b)
-	type Foo struct {
-		ID   int
-		Name string
-		save int
-	}
-	err := enc.Encode(Foo{
-		ID:   0x00AB,
-		Name: "go away",
-		save: 33,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := b.WriteString("ohh no"); err != nil {
-		t.Fatal(err)
-	}
-	var w Foo
-	dec := gob.NewDecoder(&b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := dec.Decode(&w); err != nil {
-		t.Fatal(err)
-	}
-	t.Errorf("%+v", w)
-	if s, err := ioutil.ReadAll(&b); err == nil {
-		t.Errorf("s: %q", s)
-	}
-}
-
-func NewRollingReader(r *bufio.Reader, window int) (*RollingReader, error) {
-	var (
-		n   int
-		err error
-	)
-	p := make([]byte, window+1)
-	if n, err = r.Read(p); err != nil {
-		if err != io.EOF {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, errShortRead
-		}
-	}
-	rr := &RollingReader{
-		r:        r,
-		buf:      p,
-		len:      n,
-		lastByte: -1,
-	}
-	return rr, nil
-}
-
-// read from file -> write to -> wr
-type RollingReader struct {
-	r        *bufio.Reader
-	buf      []byte
-	len      int
-	lastByte int
-	err      error
-}
-
-// moves window forward one byte at a time
-func (r *RollingReader) Read(p []byte) (n int, err error) {
-	if r.err != nil {
-		return 0, r.err
-	}
-	copy(p, r.buf[:r.len])
-
-	// move forward sliding window
-	r.lastByte = int(r.buf[0])
-	b, err := r.r.ReadByte()
-	if err != nil {
-		r.err = err
-		return r.len, nil
-	}
-	copy(r.buf, r.buf[1:])
-	r.buf[len(r.buf)-1] = b
-	return r.len, nil
-}
-
-//     x     y
-// a b c d e f g h i
-//   0     1
-func (r *RollingReader) Backup() error {
-	log.Printf("calling backup: %v, lb: %d", r.err, r.lastByte)
-	if r.err != nil {
-		if r.err == io.EOF {
-			r.err = nil
-			return nil
-		}
-		return r.err
-	}
-	if r.lastByte < 0 {
-		return fmt.Errorf("invalid use of Backup")
-	}
-	copy(r.buf[1:], r.buf[0:])
-	r.buf[0] = byte(r.lastByte)
-	r.lastByte = -1
-	return nil
-}
-
-func TestBackup(t *testing.T) {
-	var tt = []struct {
-		in       string
-		window   int
-		backupAt int
-		want     []string
-	}{
-		{
-			"abcde",
-			4,
-			2,
-			[]string{
-				"abcd", "bcde",
-			},
-		},
-	}
-	read := func(s string, w int) ([]string, error) {
-		rr, err := NewRollingReader(bufio.NewReader(strings.NewReader(s)), w)
-		if err != nil {
-			return nil, fmt.Errorf("wtf: %w", err)
-		}
-		var sl []string
-		buf := make([]byte, w)
-		count := 0
-		for {
-			n, err := rr.Read(buf)
-			if count++; count == 1 {
-				if err := rr.Backup(); err != nil {
-					return sl, fmt.Errorf("backup: %w", err)
-				}
-			}
-			if err != nil {
-				return sl, err
-			}
-			sl = append(sl, string(buf[:n]))
-		}
-	}
-	for _, tc := range tt {
-		got, err := read(tc.in, tc.window)
-		if err != nil && err != io.EOF {
-			t.Fatalf("failed: %v", err)
-		}
-		if !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("in: %q, got: %q, want: %q", tc.in, got, tc.want)
-		}
-
-	}
-}
-
-func TestRollingReader(t *testing.T) {
-	var tt = []struct {
-		in     string
-		window int
-		want   []string
-	}{
-		{
-			"abcdefghij",
-			4,
-			[]string{
-				"abcd", "bcde", "cdef", "defg",
-				"efgh", "fghi", "ghij",
-			},
-		},
-		{
-			"Plan 9 from outer space",
-			4,
-			[]string{
-				"Plan", "lan ", "an 9", "n 9 ", " 9 f",
-				"9 fr", " fro", "from", "rom ", "om o",
-				"m ou", " out", "oute", "uter", "ter ",
-				"er s", "r sp", " spa", "spac", "pace",
-			},
-		},
-		{
-			"xyz",
-			4,
-			[]string{"xyz"},
-		},
-	}
-	read := func(s string, w int) ([]string, error) {
-		rr, err := NewRollingReader(bufio.NewReader(strings.NewReader(s)), w)
-		if err != nil {
-			return nil, fmt.Errorf("wtf: %w", err)
-		}
-		var sl []string
-		buf := make([]byte, w)
-		for {
-			n, err := rr.Read(buf)
-			if err != nil {
-				return sl, err
-			}
-			sl = append(sl, string(buf[:n]))
-		}
-	}
-	for _, tc := range tt {
-		got, err := read(tc.in, tc.window)
-		if err != nil && err != io.EOF {
-			t.Fatalf("failed: %v", err)
-		}
-		if !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("in: %q, got: %q, want: %q", tc.in, got, tc.want)
-		}
-
-	}
-}
-
-func TestFunction(t *testing.T) {
-	b := [][]byte{
-		{1, 2, 3, 4},
-		{1, 2, 3, 4},
-	}
-	_ = b
-}
-
 const (
-	// 54 bytes
+	// 57 bytes
 	orig = `01234567890abcdef
 ghijklmnopqrstuvwxyz
 Plan9FromBellLabs
@@ -400,15 +120,95 @@ func (s *mergeDscEnc) Encode(e interface{}) error {
 	return nil
 }
 
+func TestMergeDesc2(t *testing.T) {
+	f := strings.NewReader(orig)
+	var err error
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := func(s string) []byte {
+		m, err := hex.DecodeString(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	src := &SrcFile{
+		Path:  "",
+		Uid:   0,
+		Gid:   0,
+		Mode:  0,
+		Size:  int64(len(orig)),
+		Mtime: time.Time{},
+		base: DstFile{
+			ID:        0, // file id
+			ChunkSize: 8,
+			Size:      1,
+			chunks: map[uint32]ChunkSrc{
+				0x071c019d: {
+					id:    0, // chunk id
+					Chunk: Chunk{Rsum: 0x071c019d, Sum: digest("2e9ec317e197819358fbc43afca7d837")},
+				},
+				0x0a3a0291: {
+					id:    1, // chunk id
+					Chunk: Chunk{Rsum: 0x0a3a0291, Sum: digest("0971ea36560f190d33257a3722f2b08c")},
+				},
+				0x0c1402ea: {
+					id:    2, // chunk id
+					Chunk: Chunk{Rsum: 0x0c1402ea, Sum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
+				},
+				0x0fb00385: {
+					id:    3, // chunk id
+					Chunk: Chunk{Rsum: 0x0fb00385, Sum: digest("a70900006e6c6e510d501865a9f65efd")},
+				},
+				0x0fc20328: {
+					id:    4, // chunk id
+					Chunk: Chunk{Rsum: 0x0fc20328, Sum: digest("aa7e6f7af8d9f4ce4bbe37c99645068a")},
+				},
+				0x0d790309: {
+					id:    5, // chunk id
+					Chunk: Chunk{Rsum: 0x0d790309, Sum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
+				},
+				0x0d090302: {
+					id:    6, // chunk id
+					Chunk: Chunk{Rsum: 0x0d090302, Sum: digest("008f7a640603fa380ae5fa52eddb1f9f")},
+				},
+				0x000b000b: {
+					id:    7, // chunk id
+					Chunk: Chunk{Rsum: 0x000b000b, Sum: digest("68b329da9893e34099c7d8ad5cb9c940")},
+				},
+			},
+		},
+	}
+	enc := &mergeDscEnc{}
+	if err = sendMergeDescs(f, 22, src, enc); err != nil {
+		t.Fatal(err)
+	}
+	t.Fatalf("%#v", enc)
+}
+
+// psync_test.go|198| &main.mergeDscEnc{main.MergeDesc{ID:22, Typ:0x1,
+// TotalSize:0}, 0x0, main.MergeReuse{ChunkID:0, NrChunks:1, Off:0}, 0x1,
+// main.MergeBlob{Size:8, Off:8}, []uint8{0x38, 0x39, 0x30, 0x61, 0x62, 0x63,
+// 0x64, 0x65}, 0x0, main.MergeReuse{ChunkID:2, NrChunks:1, Off:16}, 0x1,
+// main.MergeBlob{Size:8, Off:24}, []uint8{0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72,
+// 0x73, 0x74}, 0x0, main.MergeReuse{ChunkID:4, NrChunks:1, Off:32}, 0x1,
+// main.MergeBlob{Size:8, Off:40}, []uint8{0x6c, 0x61, 0x6e, 0x39, 0x46, 0x72,
+// 0x6f, 0x6d}, 0x0, main.MergeReuse{ChunkID:6, NrChunks:1, Off:48}, 0x1,
+// main.MergeBlob{Size:1, Off:56}, []uint8{0xa}}
+
 func TestMergeDesc(t *testing.T) {
 	f := strings.NewReader(orig)
 	var err error
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest, err := hex.DecodeString("2e9ec317e197819358fbc43afca7d837")
-	if err != nil {
-		t.Fatal(err)
+	digest := func(s string) []byte {
+		m, err := hex.DecodeString(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
 	}
 	src := &SrcFile{
 		Path:  "",
@@ -426,18 +226,106 @@ func TestMergeDesc(t *testing.T) {
 					id: 0,
 					Chunk: Chunk{
 						Rsum: 0x071c019d,
-						Sum:  digest,
+						Sum:  digest("2e9ec317e197819358fbc43afca7d837"),
 					},
 				},
 			},
 		},
 	}
 	enc := &mergeDscEnc{}
-	if err = sendMergeDescs2(f, 22, src, enc); err != nil {
+	if err = sendMergeDescs(f, 22, src, enc); err != nil {
 		t.Fatal(err)
 	}
 	t.Fatalf("%#v", enc)
 }
+
+func TestDescEnc(t *testing.T) {
+	enc := &mergeDscEnc{}
+	br := NewBring(strings.NewReader(orig), 4)
+	d := descEncoder{
+		enc:       enc,
+		r:         &br,
+		blockSize: 4,
+	}
+	// d.sendBlob()
+	// d.sendBlob()
+	d.sendReuse(2)
+	d.sendReuse(3)
+	d.sendReuse(4)
+	d.sendReuse(8)
+	d.sendBlob()
+	// d.flushReuseChunks()
+	// d.sendBlob()
+	t.Errorf("%#v", enc)
+}
+
+// x x x | x x x | x _ _ |
+func TestHowMany(t *testing.T) {
+	hm := func(x, y int) int {
+		return ((x) + ((y) - 1)) / (y)
+	}
+	r := hm(5, 3)
+	if r != 2 {
+		t.Errorf("r: %d", r)
+	}
+}
+
+// func TestRollingReader(t *testing.T) {
+// 	var tt = []struct {
+// 		in     string
+// 		window int
+// 		want   []string
+// 	}{
+// 		{
+// 			"abcdefghij",
+// 			4,
+// 			[]string{
+// 				"abcd", "bcde", "cdef", "defg",
+// 				"efgh", "fghi", "ghij",
+// 			},
+// 		},
+// 		{
+// 			"Plan 9 from outer space",
+// 			4,
+// 			[]string{
+// 				"Plan", "lan ", "an 9", "n 9 ", " 9 f",
+// 				"9 fr", " fro", "from", "rom ", "om o",
+// 				"m ou", " out", "oute", "uter", "ter ",
+// 				"er s", "r sp", " spa", "spac", "pace",
+// 			},
+// 		},
+// 		{
+// 			"xyz",
+// 			4,
+// 			[]string{"xyz"},
+// 		},
+// 	}
+// 	read := func(s string, w int) ([]string, error) {
+// 		rr, err := NewRollingReader(bufio.NewReader(strings.NewReader(s)), w)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("wtf: %w", err)
+// 		}
+// 		var sl []string
+// 		buf := make([]byte, w)
+// 		for {
+// 			n, err := rr.Read(buf)
+// 			if err != nil {
+// 				return sl, err
+// 			}
+// 			sl = append(sl, string(buf[:n]))
+// 		}
+// 	}
+// 	for _, tc := range tt {
+// 		got, err := read(tc.in, tc.window)
+// 		if err != nil && err != io.EOF {
+// 			t.Fatalf("failed: %v", err)
+// 		}
+// 		if !reflect.DeepEqual(got, tc.want) {
+// 			t.Errorf("in: %q, got: %q, want: %q", tc.in, got, tc.want)
+// 		}
+
+// 	}
+// }
 
 func TestExample(t *testing.T) {
 	s := []byte("The quick brown fox jumps over the lazy dog")
@@ -506,24 +394,4 @@ func TestExample(t *testing.T) {
 	//  over the lazy d: checksum 2f7a05a2
 	// over the lazy do: checksum 336a05f1
 	// ver the lazy dog: checksum 326205e9
-}
-
-func TestDescEnc(t *testing.T) {
-	enc := &mergeDscEnc{}
-	br := NewBring(strings.NewReader(orig), 4)
-	d := descEncoder{
-		enc:       enc,
-		r:         &br,
-		blockSize: 4,
-	}
-	// d.sendBlob()
-	// d.sendBlob()
-	d.sendReuse(2)
-	d.sendReuse(3)
-	d.sendReuse(4)
-	d.sendReuse(8)
-	d.sendBlob()
-	// d.flushReuseChunks()
-	// d.sendBlob()
-	t.Errorf("%#v", enc)
 }
