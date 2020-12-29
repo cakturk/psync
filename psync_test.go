@@ -26,18 +26,6 @@ func (s *sliceEncoder) Encode(e interface{}) error {
 	return nil
 }
 
-const (
-	// 57 bytes
-	orig = `01234567890abcdef
-ghijklmnopqrstuvwxyz
-Plan9FromBellLabs
-`
-	modified = `01234567890abcdef
-ghijklmnop-modified-
-Plan9FromBellLabs
-`
-)
-
 type strSliceWriter []string
 
 func (s *strSliceWriter) Write(p []byte) (n int, err error) {
@@ -120,8 +108,26 @@ func (s *mergeDscEnc) Encode(e interface{}) error {
 	return nil
 }
 
+const (
+	// 57 bytes
+	orig = `01234567890abcdef
+ghijklmnopqrstuvwxyz
+Plan9FromBellLabs
+`
+	modified = `01234567890abcdef
+ghijklmnop-modified-la
+Plan9FromBellLabs
+`
+)
+
+// psync_test.go|187| &main.mergeDscEnc{main.MergeDesc{ID:22, Typ:0x1,
+// TotalSize:0}, 0x0, main.MergeReuse{ChunkID:0, NrChunks:3, Off:0}, 0x1,
+// main.MergeBlob{Size:8, Off:24}, []uint8{0x6d, 0x6e, 0x6f, 0x70, 0x2d, 0x6d,
+// 0x6f, 0x64}, 0x1, main.MergeBlob{Size:10, Off:32}, []uint8{0x69, 0x66, 0x69,
+// 0x65, 0x64, 0x2d, 0x6c, 0x61, 0xa, 0x50}, 0x0, main.MergeReuse{ChunkID:5,
+// NrChunks:3, Off:42}}
 func TestMergeDesc2(t *testing.T) {
-	f := strings.NewReader(orig)
+	f := strings.NewReader(modified)
 	var err error
 	if err != nil {
 		t.Fatal(err)
@@ -186,16 +192,6 @@ func TestMergeDesc2(t *testing.T) {
 	}
 	t.Fatalf("%#v", enc)
 }
-
-// psync_test.go|198| &main.mergeDscEnc{main.MergeDesc{ID:22, Typ:0x1,
-// TotalSize:0}, 0x0, main.MergeReuse{ChunkID:0, NrChunks:1, Off:0}, 0x1,
-// main.MergeBlob{Size:8, Off:8}, []uint8{0x38, 0x39, 0x30, 0x61, 0x62, 0x63,
-// 0x64, 0x65}, 0x0, main.MergeReuse{ChunkID:2, NrChunks:1, Off:16}, 0x1,
-// main.MergeBlob{Size:8, Off:24}, []uint8{0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72,
-// 0x73, 0x74}, 0x0, main.MergeReuse{ChunkID:4, NrChunks:1, Off:32}, 0x1,
-// main.MergeBlob{Size:8, Off:40}, []uint8{0x6c, 0x61, 0x6e, 0x39, 0x46, 0x72,
-// 0x6f, 0x6d}, 0x0, main.MergeReuse{ChunkID:6, NrChunks:1, Off:48}, 0x1,
-// main.MergeBlob{Size:1, Off:56}, []uint8{0xa}}
 
 func TestMergeDesc(t *testing.T) {
 	f := strings.NewReader(orig)
