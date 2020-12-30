@@ -70,13 +70,13 @@ var errShortRead = errors.New("unexpected EOF")
 //         |       0     1
 // TODO: calc merge offsets, coalesce concecutive reusable blocks into single
 // merge descriptor.
-func sendMergeDescs(r io.ReadSeeker, id int, e *SrcFile, enc Encoder) error {
-	if e.base.Size == 0 {
+func sendMergeDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) error {
+	if e.dst.Size == 0 {
 		enc.Encode(MergeDesc{ID: id, Typ: New, TotalSize: e.Size})
 		_, err := io.Copy(enc, r)
 		return err
 	}
-	chunkSize := int64(e.base.ChunkSize)
+	chunkSize := int64(e.dst.ChunkSize)
 	cr := NewBring(r, int(chunkSize))
 	rh := adler32.New()
 	mh := md5.New()
@@ -105,7 +105,7 @@ Outer:
 			}
 		}
 		log.Printf("head0: %q, tail: %q, adler: %x", cr.HeadPeek(), cr.TailPeek(), rh.Sum32())
-		ch, ok := e.base.chunks[rh.Sum32()]
+		ch, ok := e.dst.chunks[rh.Sum32()]
 		if ok {
 			log.Println("wow I feel good!")
 			mh.Reset()
@@ -128,7 +128,7 @@ Outer:
 			}
 			rh.Roll(c)
 			log.Printf("%q, adler: 0x%x", c, rh.Sum32())
-			ch, ok = e.base.chunks[rh.Sum32()]
+			ch, ok = e.dst.chunks[rh.Sum32()]
 			if !ok {
 				continue
 			}
@@ -286,7 +286,7 @@ type Sender struct {
 	srcFiles []SrcFile
 }
 
-func (s *Sender) sendDirections(id int, e *SrcFile) error {
+func (s *Sender) sendDirections(id int, e *SenderSrcFile) error {
 	if e.Size == 0 {
 		return nil
 	}
@@ -304,16 +304,30 @@ type SrcFile struct {
 	Mode     os.FileMode
 	Size     int64
 	Mtime    time.Time
+}
+
+type ReceiverSrcFile struct {
+	SrcFile
 
 	// following fields are not serialized
 	chunkSize int // used by receiver only
-
-	base DstFile // used by sender only
 }
 
-type ChunkSrc struct {
-	id   int // Chunk ID (index of chunk)
-	size int
+func (s *SrcFile) LastChunkSize() int {
+	return 0
+}
+
+// SenderSrcFile is a convenience type to represent SrcFile
+// info in sender side
+type SenderSrcFile struct {
+	SrcFile
+	dst SenderDstFile // used by sender only
+}
+
+// SenderChunk is a convenience type to represent Chunk
+// info in sender side
+type SenderChunk struct {
+	id int // Chunk ID (index of chunk)
 	Chunk
 }
 
@@ -321,12 +335,15 @@ type DstFile struct {
 	ID        int
 	ChunkSize int
 	Size      int64 // 0 means this is a new file
-
-	chunks map[uint32]ChunkSrc // used by sender
 }
 
 func (b *DstFile) NumChunks() int {
 	return int((b.Size + (int64(b.ChunkSize) - 1)) / int64(b.ChunkSize))
+}
+
+type SenderDstFile struct {
+	DstFile
+	chunks map[uint32]SenderChunk // used by sender
 }
 
 type Chunk struct {
@@ -374,7 +391,7 @@ func chunkFile(path string, enc Encoder, blockSize int) error {
 	return doChunkFile(f, enc, blockSize)
 }
 
-func SendDstFiles(root string, chunkSize int, list []SrcFile, enc Encoder) error {
+func SendDstFiles(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) error {
 	for i, v := range list {
 		path := filepath.Join(root, v.Path)
 		info, err := os.Stat(path)

@@ -139,18 +139,22 @@ func TestMergeDesc2(t *testing.T) {
 		}
 		return m
 	}
-	src := &SrcFile{
-		Path:  "",
-		Uid:   0,
-		Gid:   0,
-		Mode:  0,
-		Size:  int64(len(orig)),
-		Mtime: time.Time{},
-		base: DstFile{
-			ID:        0, // file id
-			ChunkSize: 8,
-			Size:      1,
-			chunks: map[uint32]ChunkSrc{
+	src := &SenderSrcFile{
+		SrcFile: SrcFile{
+			Path:  "",
+			Uid:   0,
+			Gid:   0,
+			Mode:  0,
+			Size:  int64(len(orig)),
+			Mtime: time.Time{},
+		},
+		dst: SenderDstFile{
+			DstFile: DstFile{
+				ID:        0, // file id
+				ChunkSize: 8,
+				Size:      1,
+			},
+			chunks: map[uint32]SenderChunk{
 				0x071c019d: {
 					id:    0, // chunk id
 					Chunk: Chunk{Rsum: 0x071c019d, Sum: digest("2e9ec317e197819358fbc43afca7d837")},
@@ -206,18 +210,22 @@ func TestMergeDesc(t *testing.T) {
 		}
 		return m
 	}
-	src := &SrcFile{
-		Path:  "",
-		Uid:   0,
-		Gid:   0,
-		Mode:  0,
-		Size:  int64(len(orig)),
-		Mtime: time.Time{},
-		base: DstFile{
-			ID:        0,
-			ChunkSize: 8,
-			Size:      1,
-			chunks: map[uint32]ChunkSrc{
+	src := &SenderSrcFile{
+		SrcFile: SrcFile{
+			Path:  "",
+			Uid:   0,
+			Gid:   0,
+			Mode:  0,
+			Size:  int64(len(orig)),
+			Mtime: time.Time{},
+		},
+		dst: SenderDstFile{
+			DstFile: DstFile{
+				ID:        0,
+				ChunkSize: 8,
+				Size:      1,
+			},
+			chunks: map[uint32]SenderChunk{
 				0x071c019d: {
 					id: 0,
 					Chunk: Chunk{
