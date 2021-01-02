@@ -82,9 +82,9 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) erro
 	mh := md5.New()
 	var err error
 	de := descEncoder{
-		enc:       enc,
-		r:         &cr,
-		blockSize: chunkSize,
+		enc:   enc,
+		r:     &cr,
+		bsize: chunkSize,
 	}
 	enc.Encode(MergeDesc{ID: id, Typ: Partial})
 	log.Printf("chunkSize: %d", chunkSize)
@@ -171,15 +171,22 @@ Outer:
 }
 
 type descEncoder struct {
-	enc            Encoder
-	r              *Bring
-	blockSize, off int64
+	enc        Encoder
+	r          *Bring
+	bsize, off int64
 
 	// use offsetting to make the zero value useful,
 	// so every time we use this variable we need
 	// to subtract by 1 (offset).
 	previousID int
 	firstID    int
+
+	lastChunkID   int
+	lastChunkSize int64
+}
+
+func (d *descEncoder) blockSize() int64 {
+	return 0
 }
 
 // TODO: Occasionally tries to send 1-byte blobs.
@@ -218,7 +225,7 @@ func (d *descEncoder) setPrevID(id int) { d.previousID = id + 1 }
 func (d *descEncoder) resetPrevID()     { d.setPrevID(-1) }
 
 func (d *descEncoder) sendReuse(id int) error {
-	d.r.Skip(int(d.blockSize))
+	d.r.Skip(int(d.bsize))
 	prevID, set := d.prevID()
 	if !set {
 		d.setPrevID(id)
@@ -250,7 +257,7 @@ func (d *descEncoder) flushReuseChunks() error {
 		NrChunks: numChunks,
 		Off:      d.off,
 	})
-	d.off += d.blockSize * int64(numChunks)
+	d.off += d.bsize * int64(numChunks)
 	d.resetPrevID()
 	return err
 }
@@ -313,10 +320,6 @@ type ReceiverSrcFile struct {
 	chunkSize int // used by receiver only
 }
 
-func (s *SrcFile) LastChunkSize() int {
-	return 0
-}
-
 // SenderSrcFile is a convenience type to represent SrcFile
 // info in sender side
 type SenderSrcFile struct {
@@ -340,6 +343,8 @@ type DstFile struct {
 func (b *DstFile) NumChunks() int {
 	return int((b.Size + (int64(b.ChunkSize) - 1)) / int64(b.ChunkSize))
 }
+
+func (b *DstFile) LastChunkSize() int64 { return b.Size % int64(b.ChunkSize) }
 
 type SenderDstFile struct {
 	DstFile
@@ -459,7 +464,10 @@ func main() {
 		// fmt.Printf("sum: %x\n", h.Sum32())
 		h.Roll(v)
 	}
-	l, _ := GenSyncList("/tmp/sil/seki")
+	l, err := GenSyncList("/tmp/sil/seki")
+	if err != nil {
+		fmt.Printf("%v\n", err)
+	}
 	for _, v := range l {
 		fmt.Printf("entry: %v\n", v)
 	}

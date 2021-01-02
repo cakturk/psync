@@ -247,9 +247,9 @@ func TestDescEnc(t *testing.T) {
 	enc := &mergeDscEnc{}
 	br := NewBring(strings.NewReader(orig), 4)
 	d := descEncoder{
-		enc:       enc,
-		r:         &br,
-		blockSize: 4,
+		enc:   enc,
+		r:     &br,
+		bsize: 4,
 	}
 	// d.sendBlob()
 	// d.sendBlob()
@@ -261,6 +261,22 @@ func TestDescEnc(t *testing.T) {
 	// d.flushReuseChunks()
 	// d.sendBlob()
 	t.Errorf("%#v", enc)
+}
+
+func TestLastChunkSize(t *testing.T) {
+	var tests = []struct {
+		in   DstFile
+		want int64
+	}{
+		{DstFile{ChunkSize: 8, Size: 18}, 2},
+		{DstFile{ChunkSize: 8, Size: 15}, 7},
+		{DstFile{ChunkSize: 7, Size: 15}, 1},
+	}
+	for _, tt := range tests {
+		if got := tt.in.LastChunkSize(); got != tt.want {
+			t.Errorf("LastChunkSize(...) = %d, want %d", got, tt.want)
+		}
+	}
 }
 
 // x x x | x x x | x _ _ |
