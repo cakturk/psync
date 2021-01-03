@@ -251,42 +251,26 @@ func TestMergeDesc(t *testing.T) {
 // || + 	},
 // ||   )
 func TestDescEnc(t *testing.T) {
-	enc := &mergeDscEnc{}
-	br := NewBring(strings.NewReader(orig), 4)
-	d := descEncoder{
-		enc:   enc,
-		r:     &br,
-		bsize: 4,
-	}
 	newBring := func(blockSize int) *Bring {
-		ret := NewBring(strings.NewReader(orig), blockSize)
+		var buf bytes.Buffer
+		ret := NewBring(&buf, blockSize)
 		return &ret
 	}
-	want := &mergeDscEnc{
-		ChunkType(0), MergeReuse{},
-		ChunkType(0), MergeReuse{},
-		ChunkType(1), MergeBlob{},
-	}
-	sendBlob := func() func(*descEncoder) {
+	sendBlob := func(blobSize int64) func(*descEncoder) {
 		return func(d *descEncoder) {
-			// fn := (*descEncoder).sendBlob
-			// fn(d)
 			d.sendBlob()
+			d.off += blobSize
 		}
 	}
 	sendReuse := func(id int) func(*descEncoder) {
 		return func(d *descEncoder) {
-			// fn := (*descEncoder).sendBlob
-			// fn(d)
 			d.sendReuse(id)
 		}
 	}
-	_ = sendBlob
-	_ = sendReuse
+	flush := func() func(*descEncoder) { return func(d *descEncoder) { d.flush() } }
 	var tests = []struct {
-		in descEncoder
-		// funcs []func(d *descEncoder, id int) error
-		funcs []func(*descEncoder)
+		in    descEncoder
+		calls []func(*descEncoder)
 		want  *mergeDscEnc
 	}{
 		{
@@ -294,46 +278,84 @@ func TestDescEnc(t *testing.T) {
 				enc:           &mergeDscEnc{},
 				r:             newBring(4),
 				bsize:         4,
-				lastBlockID:   3,
-				lastBlockSize: 2,
+				lastBlockID:   0,
+				lastBlockSize: 4,
 			},
-			// funcs: []func(d *descEncoder, id int) error{
-			// (*descEncoder).sendReuse,
-			// (*descEncoder).sendReuse,
-			// (*descEncoder).sendReuse,
-			// (*descEncoder).sendReuse,
-			// },
-			funcs: []func(d *descEncoder){
+			calls: []func(d *descEncoder){
 				sendReuse(2),
 				sendReuse(3),
 				sendReuse(4),
 				sendReuse(8),
-				sendBlob(),
+				sendBlob(7),
+				sendBlob(5),
 			},
 			want: &mergeDscEnc{
-				ChunkType(0), MergeReuse{},
-				ChunkType(0), MergeReuse{},
-				ChunkType(1), MergeBlob{},
+				ChunkType(0), MergeReuse{ChunkID: 2, NrChunks: 3},
+				ChunkType(0), MergeReuse{ChunkID: 8, NrChunks: 1, Off: 12},
+				ChunkType(1), MergeBlob{Off: 16},
+				ChunkType(1), MergeBlob{Off: 23},
+			},
+		},
+		{
+			in: descEncoder{
+				enc:           &mergeDscEnc{},
+				r:             newBring(8),
+				bsize:         8,
+				lastBlockID:   3,
+				lastBlockSize: 5,
+			},
+			calls: []func(d *descEncoder){
+				sendReuse(1),
+				sendReuse(2),
+				sendReuse(3),
+				sendReuse(5),
+				sendBlob(6),
+				sendReuse(7),
+				flush(),
+			},
+			want: &mergeDscEnc{
+				ChunkType(0), MergeReuse{ChunkID: 1, NrChunks: 3},
+				ChunkType(0), MergeReuse{ChunkID: 5, NrChunks: 1, Off: 21},
+				ChunkType(1), MergeBlob{Off: 29},
+				ChunkType(0), MergeReuse{ChunkID: 7, NrChunks: 1, Off: 35},
+			},
+		},
+		{
+			in: descEncoder{
+				enc:           &mergeDscEnc{},
+				r:             newBring(8),
+				bsize:         8,
+				lastBlockID:   5,
+				lastBlockSize: 5,
+			},
+			calls: []func(d *descEncoder){
+				sendBlob(3),
+				sendReuse(0),
+				sendReuse(1),
+				sendBlob(5),
+				sendBlob(8),
+				sendReuse(5),
+				sendBlob(2),
+				flush(),
+			},
+			want: &mergeDscEnc{
+				ChunkType(1), MergeBlob{Off: 0},
+				ChunkType(0), MergeReuse{ChunkID: 0, NrChunks: 2, Off: 3},
+				ChunkType(1), MergeBlob{Off: 19},
+				ChunkType(1), MergeBlob{Off: 24},
+				// last block is 5 bytes long
+				ChunkType(0), MergeReuse{ChunkID: 5, NrChunks: 1, Off: 32},
+				ChunkType(1), MergeBlob{Off: 37},
 			},
 		},
 	}
-	_ = tests
-	_ = want
-	// want := mergeDscEnc{}
-	// want = append(want, ChunkType(0))
-	// want = append(want, ChunkType(0))
-	// d.sendBlob()
-	// d.sendBlob()
-	d.sendReuse(2)
-	d.sendReuse(3)
-	d.sendReuse(4)
-	d.sendReuse(8)
-	d.sendBlob()
-	// d.flushReuseChunks()
-	// d.sendBlob()
-	// t.Errorf("%#v", enc)
-	if diff := cmp.Diff(enc, ""); diff != "" {
-		t.Errorf("mismatch (-got, +want):\n%s", diff)
+	for _, tt := range tests {
+		for _, fn := range tt.calls {
+			fn(&tt.in)
+		}
+		if diff := cmp.Diff(tt.in.enc, tt.want); diff != "" {
+			t.Fatalf("mismatch (-got, +want):\n%s", diff)
+		}
 	}
 }
 
