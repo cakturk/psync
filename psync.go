@@ -175,18 +175,22 @@ type descEncoder struct {
 	r          *Bring
 	bsize, off int64
 
+	lastBlockID   int
+	lastBlockSize int64
+
 	// use offsetting to make the zero value useful,
 	// so every time we use this variable we need
 	// to subtract by 1 (offset).
-	previousID int
-	firstID    int
-
-	lastChunkID   int
-	lastChunkSize int64
+	previousID      int
+	firstID         int
+	contiguousBsize int64
 }
 
-func (d *descEncoder) blockSize() int64 {
-	return 0
+func (d *descEncoder) findBlockSize(id int) int64 {
+	if id == d.lastBlockID {
+		return d.lastBlockSize
+	}
+	return d.bsize
 }
 
 // TODO: Occasionally tries to send 1-byte blobs.
@@ -225,11 +229,13 @@ func (d *descEncoder) setPrevID(id int) { d.previousID = id + 1 }
 func (d *descEncoder) resetPrevID()     { d.setPrevID(-1) }
 
 func (d *descEncoder) sendReuse(id int) error {
-	d.r.Skip(int(d.bsize))
+	bsize := d.findBlockSize(id)
+	d.r.Skip(int(bsize))
 	prevID, set := d.prevID()
 	if !set {
 		d.setPrevID(id)
 		d.firstID = id
+		d.contiguousBsize = bsize
 		return nil
 	}
 	if id-prevID != 1 {
@@ -238,6 +244,7 @@ func (d *descEncoder) sendReuse(id int) error {
 		}
 		d.firstID = id
 	}
+	d.contiguousBsize += bsize
 	d.setPrevID(id)
 	return nil
 }
@@ -257,7 +264,8 @@ func (d *descEncoder) flushReuseChunks() error {
 		NrChunks: numChunks,
 		Off:      d.off,
 	})
-	d.off += d.bsize * int64(numChunks)
+	d.off += d.contiguousBsize
+	d.contiguousBsize = 0
 	d.resetPrevID()
 	return err
 }

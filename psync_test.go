@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/chmduquesne/rollinghash/adler32"
+	"github.com/google/go-cmp/cmp"
 )
 
 type sliceEncoder []interface{}
@@ -243,6 +244,12 @@ func TestMergeDesc(t *testing.T) {
 	t.Fatalf("%#v", enc)
 }
 
+// || + 	&main.mergeDscEnc{
+// || + 		main.ChunkType(0), main.MergeReuse{ChunkID: 2, NrChunks: 3}, main.ChunkType(0),
+// || + 		main.MergeReuse{ChunkID: 8, NrChunks: 1, Off: 12}, main.ChunkType(1),
+// || + 		main.MergeBlob{Off: 16},
+// || + 	},
+// ||   )
 func TestDescEnc(t *testing.T) {
 	enc := &mergeDscEnc{}
 	br := NewBring(strings.NewReader(orig), 4)
@@ -251,6 +258,70 @@ func TestDescEnc(t *testing.T) {
 		r:     &br,
 		bsize: 4,
 	}
+	newBring := func(blockSize int) *Bring {
+		ret := NewBring(strings.NewReader(orig), blockSize)
+		return &ret
+	}
+	want := &mergeDscEnc{
+		ChunkType(0), MergeReuse{},
+		ChunkType(0), MergeReuse{},
+		ChunkType(1), MergeBlob{},
+	}
+	sendBlob := func() func(*descEncoder) {
+		return func(d *descEncoder) {
+			// fn := (*descEncoder).sendBlob
+			// fn(d)
+			d.sendBlob()
+		}
+	}
+	sendReuse := func(id int) func(*descEncoder) {
+		return func(d *descEncoder) {
+			// fn := (*descEncoder).sendBlob
+			// fn(d)
+			d.sendReuse(id)
+		}
+	}
+	_ = sendBlob
+	_ = sendReuse
+	var tests = []struct {
+		in descEncoder
+		// funcs []func(d *descEncoder, id int) error
+		funcs []func(*descEncoder)
+		want  *mergeDscEnc
+	}{
+		{
+			in: descEncoder{
+				enc:           &mergeDscEnc{},
+				r:             newBring(4),
+				bsize:         4,
+				lastBlockID:   3,
+				lastBlockSize: 2,
+			},
+			// funcs: []func(d *descEncoder, id int) error{
+			// (*descEncoder).sendReuse,
+			// (*descEncoder).sendReuse,
+			// (*descEncoder).sendReuse,
+			// (*descEncoder).sendReuse,
+			// },
+			funcs: []func(d *descEncoder){
+				sendReuse(2),
+				sendReuse(3),
+				sendReuse(4),
+				sendReuse(8),
+				sendBlob(),
+			},
+			want: &mergeDscEnc{
+				ChunkType(0), MergeReuse{},
+				ChunkType(0), MergeReuse{},
+				ChunkType(1), MergeBlob{},
+			},
+		},
+	}
+	_ = tests
+	_ = want
+	// want := mergeDscEnc{}
+	// want = append(want, ChunkType(0))
+	// want = append(want, ChunkType(0))
 	// d.sendBlob()
 	// d.sendBlob()
 	d.sendReuse(2)
@@ -260,7 +331,10 @@ func TestDescEnc(t *testing.T) {
 	d.sendBlob()
 	// d.flushReuseChunks()
 	// d.sendBlob()
-	t.Errorf("%#v", enc)
+	// t.Errorf("%#v", enc)
+	if diff := cmp.Diff(enc, ""); diff != "" {
+		t.Errorf("mismatch (-got, +want):\n%s", diff)
+	}
 }
 
 func TestLastChunkSize(t *testing.T) {
