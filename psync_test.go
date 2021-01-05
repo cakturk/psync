@@ -128,7 +128,7 @@ Plan9FromBellLabs
 // 0x6f, 0x64}, 0x1, main.MergeBlob{Size:10, Off:32}, []uint8{0x69, 0x66, 0x69,
 // 0x65, 0x64, 0x2d, 0x6c, 0x61, 0xa, 0x50}, 0x0, main.MergeReuse{ChunkID:5,
 // NrChunks:3, Off:42}}
-func TestMergeDesc2(t *testing.T) {
+func TestMergeDesc(t *testing.T) {
 	f := strings.NewReader(modified)
 	var err error
 	if err != nil {
@@ -213,52 +213,6 @@ func TestMergeDesc2(t *testing.T) {
 	if diff := cmp.Diff(want, enc); diff != "" {
 		t.Fatalf("mismatch (-want, +got):\n%s", diff)
 	}
-}
-
-func TestMergeDesc(t *testing.T) {
-	f := strings.NewReader(orig)
-	var err error
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest := func(s string) []byte {
-		m, err := hex.DecodeString(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return m
-	}
-	src := &SenderSrcFile{
-		SrcFile: SrcFile{
-			Path:  "",
-			Uid:   0,
-			Gid:   0,
-			Mode:  0,
-			Size:  int64(len(orig)),
-			Mtime: time.Time{},
-		},
-		dst: SenderDstFile{
-			DstFile: DstFile{
-				ID:        0,
-				ChunkSize: 8,
-				Size:      1,
-			},
-			chunks: map[uint32]SenderChunk{
-				0x071c019d: {
-					id: 0,
-					Chunk: Chunk{
-						Rsum: 0x071c019d,
-						Sum:  digest("2e9ec317e197819358fbc43afca7d837"),
-					},
-				},
-			},
-		},
-	}
-	enc := &mergeDscEnc{}
-	if err = sendMergeDescs(f, 22, src, enc); err != nil {
-		t.Fatal(err)
-	}
-	t.Fatalf("%#v", enc)
 }
 
 // || + 	&main.mergeDscEnc{
