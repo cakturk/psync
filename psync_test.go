@@ -115,6 +115,7 @@ const (
 ghijklmnopqrstuvwxyz
 Plan9FromBellLabs
 `
+	// 59 bytes
 	modified = `01234567890abcdef
 ghijklmnop-modified-la
 Plan9FromBellLabs
@@ -153,7 +154,7 @@ func TestMergeDesc2(t *testing.T) {
 			DstFile: DstFile{
 				ID:        0, // file id
 				ChunkSize: 8,
-				Size:      1,
+				Size:      int64(len(orig)),
 			},
 			chunks: map[uint32]SenderChunk{
 				0x071c019d: {
@@ -195,7 +196,7 @@ func TestMergeDesc2(t *testing.T) {
 	if err = sendMergeDescs(f, 22, src, enc); err != nil {
 		t.Fatal(err)
 	}
-	t.Fatalf("%#v", enc)
+	t.Fatalf("%v", cmp.Diff("", enc))
 }
 
 func TestMergeDesc(t *testing.T) {

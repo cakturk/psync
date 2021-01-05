@@ -47,7 +47,7 @@ func (c ChunkType) String() string {
 	case ReuseExisting:
 		return "ReuseExisting"
 	case Blob:
-		return "ReuseExisting"
+		return "Blob"
 	default:
 		return "Unknown chunk ID"
 	}
@@ -82,9 +82,11 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) erro
 	mh := md5.New()
 	var err error
 	de := descEncoder{
-		enc:   enc,
-		r:     &cr,
-		bsize: chunkSize,
+		enc:           enc,
+		r:             &cr,
+		bsize:         chunkSize,
+		lastBlockID:   e.dst.LastChunkID(),
+		lastBlockSize: e.dst.LastChunkSize(),
 	}
 	enc.Encode(MergeDesc{ID: id, Typ: Partial})
 	log.Printf("chunkSize: %d", chunkSize)
@@ -352,6 +354,7 @@ func (b *DstFile) NumChunks() int {
 	return int((b.Size + (int64(b.ChunkSize) - 1)) / int64(b.ChunkSize))
 }
 
+func (b *DstFile) LastChunkID() int     { return b.NumChunks() - 1 }
 func (b *DstFile) LastChunkSize() int64 { return b.Size % int64(b.ChunkSize) }
 
 type SenderDstFile struct {
