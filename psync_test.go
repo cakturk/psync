@@ -135,18 +135,18 @@ func TestMergeDesc(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := &mergeDscEnc{
-		MergeDesc{ID: 22, Typ: Partial, TotalSize: 0},
-		ReuseExisting, MergeReuse{ChunkID: 0, NrChunks: 3, Off: 0},
+		FileDesc{ID: 22, Typ: PartialFile, TotalSize: 0},
+		RemoteBlockType, RemoteBlock{ChunkID: 0, NrChunks: 3, Off: 0},
 
-		Blob, MergeBlob{Size: 8, Off: 24},
+		LocalBlockType, LocalBlock{Size: 8, Off: 24},
 		// {0x6d, 0x6e, 0x6f, 0x70, 0x2d, 0x6d, 0x6f, 0x64}
 		[]byte("mnop-mod"),
 
-		Blob, MergeBlob{Size: 10, Off: 32},
+		LocalBlockType, LocalBlock{Size: 10, Off: 32},
 		// {0x69, 0x66, 0x69, 0x65, 0x64, 0x2d, 0x6c, 0x61, 0xa, 0x50}
 		[]byte("ified-la\nP"),
 
-		ReuseExisting, MergeReuse{ChunkID: 5, NrChunks: 3, Off: 42},
+		RemoteBlockType, RemoteBlock{ChunkID: 5, NrChunks: 3, Off: 42},
 	}
 	digest := func(s string) []byte {
 		m, err := hex.DecodeString(s)
@@ -207,7 +207,7 @@ func TestMergeDesc(t *testing.T) {
 		},
 	}
 	enc := &mergeDscEnc{}
-	if err = sendMergeDescs(f, 22, src, enc); err != nil {
+	if err = sendBlockDescs(f, 22, src, enc); err != nil {
 		t.Fatal(err)
 	}
 	if diff := cmp.Diff(want, enc); diff != "" {
@@ -261,10 +261,10 @@ func TestDescEnc(t *testing.T) {
 				sendBlob(5),
 			},
 			want: &mergeDscEnc{
-				ChunkType(0), MergeReuse{ChunkID: 2, NrChunks: 3},
-				ChunkType(0), MergeReuse{ChunkID: 8, NrChunks: 1, Off: 12},
-				ChunkType(1), MergeBlob{Off: 16},
-				ChunkType(1), MergeBlob{Off: 23},
+				BlockType(0), RemoteBlock{ChunkID: 2, NrChunks: 3},
+				BlockType(0), RemoteBlock{ChunkID: 8, NrChunks: 1, Off: 12},
+				BlockType(1), LocalBlock{Off: 16},
+				BlockType(1), LocalBlock{Off: 23},
 			},
 		},
 		{
@@ -285,10 +285,10 @@ func TestDescEnc(t *testing.T) {
 				flush(),
 			},
 			want: &mergeDscEnc{
-				ChunkType(0), MergeReuse{ChunkID: 1, NrChunks: 3},
-				ChunkType(0), MergeReuse{ChunkID: 5, NrChunks: 1, Off: 21},
-				ChunkType(1), MergeBlob{Off: 29},
-				ChunkType(0), MergeReuse{ChunkID: 7, NrChunks: 1, Off: 35},
+				BlockType(0), RemoteBlock{ChunkID: 1, NrChunks: 3},
+				BlockType(0), RemoteBlock{ChunkID: 5, NrChunks: 1, Off: 21},
+				BlockType(1), LocalBlock{Off: 29},
+				BlockType(0), RemoteBlock{ChunkID: 7, NrChunks: 1, Off: 35},
 			},
 		},
 		{
@@ -310,13 +310,13 @@ func TestDescEnc(t *testing.T) {
 				flush(),
 			},
 			want: &mergeDscEnc{
-				ChunkType(1), MergeBlob{Off: 0},
-				ChunkType(0), MergeReuse{ChunkID: 0, NrChunks: 2, Off: 3},
-				ChunkType(1), MergeBlob{Off: 19},
-				ChunkType(1), MergeBlob{Off: 24},
+				BlockType(1), LocalBlock{Off: 0},
+				BlockType(0), RemoteBlock{ChunkID: 0, NrChunks: 2, Off: 3},
+				BlockType(1), LocalBlock{Off: 19},
+				BlockType(1), LocalBlock{Off: 24},
 				// last block is 5 bytes long
-				ChunkType(0), MergeReuse{ChunkID: 5, NrChunks: 1, Off: 32},
-				ChunkType(1), MergeBlob{Off: 37},
+				BlockType(0), RemoteBlock{ChunkID: 5, NrChunks: 1, Off: 32},
+				BlockType(1), LocalBlock{Off: 37},
 			},
 		},
 	}

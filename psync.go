@@ -22,44 +22,44 @@ type Encoder interface {
 	Write(p []byte) (n int, err error)
 }
 
-type MergeType byte
+type FileType byte
 
 const (
-	New MergeType = iota
-	Partial
+	NewFile FileType = iota
+	PartialFile
 )
 
-type MergeDesc struct {
+type FileDesc struct {
 	ID        int
-	Typ       MergeType
+	Typ       FileType
 	TotalSize int64
 }
 
-type ChunkType byte
+type BlockType byte
 
 const (
-	ReuseExisting ChunkType = iota
-	Blob
+	RemoteBlockType BlockType = iota
+	LocalBlockType
 )
 
-func (c ChunkType) String() string {
+func (c BlockType) String() string {
 	switch c {
-	case ReuseExisting:
-		return "ReuseExisting"
-	case Blob:
-		return "Blob"
+	case RemoteBlockType:
+		return "LocalBlockType"
+	case LocalBlockType:
+		return "RemoteBlockType"
 	default:
-		return "Unknown chunk ID"
+		return "Unknown block type"
 	}
 }
 
-type MergeReuse struct {
+type RemoteBlock struct {
 	ChunkID  int
 	NrChunks int
 	Off      int64
 }
 
-type MergeBlob struct {
+type LocalBlock struct {
 	Size, Off int64
 }
 
@@ -70,9 +70,9 @@ var errShortRead = errors.New("unexpected EOF")
 //         |       0     1
 // TODO: calc merge offsets, coalesce concecutive reusable blocks into single
 // merge descriptor.
-func sendMergeDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) error {
+func sendBlockDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) error {
 	if e.dst.Size == 0 {
-		enc.Encode(MergeDesc{ID: id, Typ: New, TotalSize: e.Size})
+		enc.Encode(FileDesc{ID: id, Typ: NewFile, TotalSize: e.Size})
 		_, err := io.Copy(enc, r)
 		return err
 	}
@@ -88,7 +88,7 @@ func sendMergeDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) erro
 		lastBlockID:   e.dst.LastChunkID(),
 		lastBlockSize: e.dst.LastChunkSize(),
 	}
-	enc.Encode(MergeDesc{ID: id, Typ: Partial})
+	enc.Encode(FileDesc{ID: id, Typ: PartialFile})
 	log.Printf("chunkSize: %d", chunkSize)
 Outer:
 	for {
@@ -203,11 +203,11 @@ func (d *descEncoder) sendBlob() error {
 			return err
 		}
 	}
-	err := d.enc.Encode(Blob)
+	err := d.enc.Encode(LocalBlockType)
 	if err != nil {
 		return err
 	}
-	err = d.enc.Encode(MergeBlob{
+	err = d.enc.Encode(LocalBlock{
 		Size: d.r.HeadLen(),
 		Off:  d.off,
 	})
@@ -257,11 +257,11 @@ func (d *descEncoder) flushReuseChunks() error {
 		return nil
 	}
 	numChunks := prevID - d.firstID + 1
-	err := d.enc.Encode(ReuseExisting)
+	err := d.enc.Encode(RemoteBlockType)
 	if err != nil {
 		return nil
 	}
-	err = d.enc.Encode(MergeReuse{
+	err = d.enc.Encode(RemoteBlock{
 		ChunkID:  d.firstID,
 		NrChunks: numChunks,
 		Off:      d.off,
@@ -280,11 +280,11 @@ func (d *descEncoder) flush() error {
 	if d.r.BufferedLen() <= 0 {
 		return nil
 	}
-	err = d.enc.Encode(Blob)
+	err = d.enc.Encode(LocalBlockType)
 	if err != nil {
 		return err
 	}
-	err = d.enc.Encode(MergeBlob{
+	err = d.enc.Encode(LocalBlock{
 		Size: d.r.BufferedLen(),
 		Off:  d.off,
 	})
@@ -312,7 +312,7 @@ func (s *Sender) sendDirections(id int, e *SenderSrcFile) error {
 		return err
 	}
 	defer f.Close()
-	return sendMergeDescs(f, id, e, s.enc)
+	return sendBlockDescs(f, id, e, s.enc)
 }
 
 type SrcFile struct {
