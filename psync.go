@@ -42,8 +42,8 @@ const (
 	Blob
 )
 
-func (c *ChunkType) String() string {
-	switch *c {
+func (c ChunkType) String() string {
+	switch c {
 	case ReuseExisting:
 		return "ReuseExisting"
 	case Blob:
