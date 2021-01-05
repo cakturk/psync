@@ -134,6 +134,18 @@ func TestMergeDesc2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := &mergeDscEnc{
+		MergeDesc{ID: 22, Typ: Partial, TotalSize: 0},
+		ReuseExisting, MergeReuse{ChunkID: 0, NrChunks: 3, Off: 0},
+
+		Blob, MergeBlob{Size: 8, Off: 24},
+		[]byte{0x6d, 0x6e, 0x6f, 0x70, 0x2d, 0x6d, 0x6f, 0x64},
+
+		Blob, MergeBlob{Size: 10, Off: 32},
+		[]byte{0x69, 0x66, 0x69, 0x65, 0x64, 0x2d, 0x6c, 0x61, 0xa, 0x50},
+
+		ReuseExisting, MergeReuse{ChunkID: 5, NrChunks: 3, Off: 42},
+	}
 	digest := func(s string) []byte {
 		m, err := hex.DecodeString(s)
 		if err != nil {
@@ -196,7 +208,9 @@ func TestMergeDesc2(t *testing.T) {
 	if err = sendMergeDescs(f, 22, src, enc); err != nil {
 		t.Fatal(err)
 	}
-	t.Fatalf("%v", cmp.Diff("", enc))
+	if diff := cmp.Diff(want, enc); diff != "" {
+		t.Fatalf("mismatch (-want, +got):\n%s", diff)
+	}
 }
 
 func TestMergeDesc(t *testing.T) {
