@@ -227,13 +227,13 @@ func TestDescEnc(t *testing.T) {
 		ret := NewBring(&buf, blockSize)
 		return &ret
 	}
-	sendBlob := func(blobSize int64) func(*descEncoder) {
+	sendLocalBlock := func(blobSize int64) func(*descEncoder) {
 		return func(d *descEncoder) {
 			d.sendBlob()
 			d.off += blobSize
 		}
 	}
-	sendReuse := func(id int) func(*descEncoder) {
+	sendRemoteBlock := func(id int) func(*descEncoder) {
 		return func(d *descEncoder) {
 			d.sendReuse(id)
 		}
@@ -253,18 +253,18 @@ func TestDescEnc(t *testing.T) {
 				lastBlockSize: 4,
 			},
 			calls: []func(d *descEncoder){
-				sendReuse(2),
-				sendReuse(3),
-				sendReuse(4),
-				sendReuse(8),
-				sendBlob(7),
-				sendBlob(5),
+				sendRemoteBlock(2),
+				sendRemoteBlock(3),
+				sendRemoteBlock(4),
+				sendRemoteBlock(8),
+				sendLocalBlock(7),
+				sendLocalBlock(5),
 			},
 			want: &mergeDscEnc{
-				BlockType(0), RemoteBlock{ChunkID: 2, NrChunks: 3},
-				BlockType(0), RemoteBlock{ChunkID: 8, NrChunks: 1, Off: 12},
-				BlockType(1), LocalBlock{Off: 16},
-				BlockType(1), LocalBlock{Off: 23},
+				RemoteBlockType, RemoteBlock{ChunkID: 2, NrChunks: 3},
+				RemoteBlockType, RemoteBlock{ChunkID: 8, NrChunks: 1, Off: 12},
+				LocalBlockType, LocalBlock{Off: 16},
+				LocalBlockType, LocalBlock{Off: 23},
 			},
 		},
 		{
@@ -276,19 +276,19 @@ func TestDescEnc(t *testing.T) {
 				lastBlockSize: 5,
 			},
 			calls: []func(d *descEncoder){
-				sendReuse(1),
-				sendReuse(2),
-				sendReuse(3),
-				sendReuse(5),
-				sendBlob(6),
-				sendReuse(7),
+				sendRemoteBlock(1),
+				sendRemoteBlock(2),
+				sendRemoteBlock(3),
+				sendRemoteBlock(5),
+				sendLocalBlock(6),
+				sendRemoteBlock(7),
 				flush(),
 			},
 			want: &mergeDscEnc{
-				BlockType(0), RemoteBlock{ChunkID: 1, NrChunks: 3},
-				BlockType(0), RemoteBlock{ChunkID: 5, NrChunks: 1, Off: 21},
-				BlockType(1), LocalBlock{Off: 29},
-				BlockType(0), RemoteBlock{ChunkID: 7, NrChunks: 1, Off: 35},
+				RemoteBlockType, RemoteBlock{ChunkID: 1, NrChunks: 3},
+				RemoteBlockType, RemoteBlock{ChunkID: 5, NrChunks: 1, Off: 21},
+				LocalBlockType, LocalBlock{Off: 29},
+				RemoteBlockType, RemoteBlock{ChunkID: 7, NrChunks: 1, Off: 35},
 			},
 		},
 		{
@@ -300,23 +300,23 @@ func TestDescEnc(t *testing.T) {
 				lastBlockSize: 5,
 			},
 			calls: []func(d *descEncoder){
-				sendBlob(3),
-				sendReuse(0),
-				sendReuse(1),
-				sendBlob(5),
-				sendBlob(8),
-				sendReuse(5),
-				sendBlob(2),
+				sendLocalBlock(3),
+				sendRemoteBlock(0),
+				sendRemoteBlock(1),
+				sendLocalBlock(5),
+				sendLocalBlock(8),
+				sendRemoteBlock(5),
+				sendLocalBlock(2),
 				flush(),
 			},
 			want: &mergeDscEnc{
-				BlockType(1), LocalBlock{Off: 0},
-				BlockType(0), RemoteBlock{ChunkID: 0, NrChunks: 2, Off: 3},
-				BlockType(1), LocalBlock{Off: 19},
-				BlockType(1), LocalBlock{Off: 24},
+				LocalBlockType, LocalBlock{Off: 0},
+				RemoteBlockType, RemoteBlock{ChunkID: 0, NrChunks: 2, Off: 3},
+				LocalBlockType, LocalBlock{Off: 19},
+				LocalBlockType, LocalBlock{Off: 24},
 				// last block is 5 bytes long
-				BlockType(0), RemoteBlock{ChunkID: 5, NrChunks: 1, Off: 32},
-				BlockType(1), LocalBlock{Off: 37},
+				RemoteBlockType, RemoteBlock{ChunkID: 5, NrChunks: 1, Off: 32},
+				LocalBlockType, LocalBlock{Off: 37},
 			},
 		},
 	}
