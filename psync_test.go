@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/gob"
 	"encoding/hex"
 	"hash"
 	stdadler32 "hash/adler32"
@@ -481,4 +482,12 @@ func TestExample(t *testing.T) {
 	//  over the lazy d: checksum 2f7a05a2
 	// over the lazy do: checksum 336a05f1
 	// ver the lazy dog: checksum 326205e9
+}
+
+func TestGob(t *testing.T) {
+	var b bytes.Buffer
+	enc := gob.NewEncoder(&b)
+	_ = enc
+	dec := gob.NewDecoder(&b)
+	_ = dec
 }

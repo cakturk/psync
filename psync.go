@@ -296,6 +296,18 @@ func (d *blockEncoder) flush() error {
 	return err
 }
 
+type Decoder interface {
+	Decode(e interface{}) error
+}
+
+func buildFile(dec Decoder) error {
+	var fd FileDesc
+	if err := dec.Decode(&fd); err != nil {
+		return err
+	}
+	return nil
+}
+
 type Sender struct {
 	r        io.ReadWriter
 	enc      Encoder
