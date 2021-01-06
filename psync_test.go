@@ -90,7 +90,7 @@ func TestDoChunkFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, v := range enc {
-		ch := v.(Chunk)
+		ch := v.(BlockSum)
 		t.Errorf("%v", &ch)
 	}
 	t.Fatalf("%#v", buf)
@@ -170,38 +170,38 @@ func TestMergeDesc(t *testing.T) {
 				ChunkSize: 8,
 				Size:      int64(len(orig)),
 			},
-			chunks: map[uint32]SenderChunk{
+			sums: map[uint32]SenderBlockSum{
 				0x071c019d: {
-					id:    0, // chunk id
-					Chunk: Chunk{Rsum: 0x071c019d, Sum: digest("2e9ec317e197819358fbc43afca7d837")},
+					id:       0, // chunk id
+					BlockSum: BlockSum{Rsum: 0x071c019d, Csum: digest("2e9ec317e197819358fbc43afca7d837")},
 				},
 				0x0a3a0291: {
-					id:    1, // chunk id
-					Chunk: Chunk{Rsum: 0x0a3a0291, Sum: digest("0971ea36560f190d33257a3722f2b08c")},
+					id:       1, // chunk id
+					BlockSum: BlockSum{Rsum: 0x0a3a0291, Csum: digest("0971ea36560f190d33257a3722f2b08c")},
 				},
 				0x0c1402ea: {
-					id:    2, // chunk id
-					Chunk: Chunk{Rsum: 0x0c1402ea, Sum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
+					id:       2, // chunk id
+					BlockSum: BlockSum{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
 				},
 				0x0fb00385: {
-					id:    3, // chunk id
-					Chunk: Chunk{Rsum: 0x0fb00385, Sum: digest("a70900006e6c6e510d501865a9f65efd")},
+					id:       3, // chunk id
+					BlockSum: BlockSum{Rsum: 0x0fb00385, Csum: digest("a70900006e6c6e510d501865a9f65efd")},
 				},
 				0x0fc20328: {
-					id:    4, // chunk id
-					Chunk: Chunk{Rsum: 0x0fc20328, Sum: digest("aa7e6f7af8d9f4ce4bbe37c99645068a")},
+					id:       4, // chunk id
+					BlockSum: BlockSum{Rsum: 0x0fc20328, Csum: digest("aa7e6f7af8d9f4ce4bbe37c99645068a")},
 				},
 				0x0d790309: {
-					id:    5, // chunk id
-					Chunk: Chunk{Rsum: 0x0d790309, Sum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
+					id:       5, // chunk id
+					BlockSum: BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
 				},
 				0x0d090302: {
-					id:    6, // chunk id
-					Chunk: Chunk{Rsum: 0x0d090302, Sum: digest("008f7a640603fa380ae5fa52eddb1f9f")},
+					id:       6, // chunk id
+					BlockSum: BlockSum{Rsum: 0x0d090302, Csum: digest("008f7a640603fa380ae5fa52eddb1f9f")},
 				},
 				0x000b000b: {
-					id:    7, // chunk id
-					Chunk: Chunk{Rsum: 0x000b000b, Sum: digest("68b329da9893e34099c7d8ad5cb9c940")},
+					id:       7, // chunk id
+					BlockSum: BlockSum{Rsum: 0x000b000b, Csum: digest("68b329da9893e34099c7d8ad5cb9c940")},
 				},
 			},
 		},
@@ -227,32 +227,32 @@ func TestDescEnc(t *testing.T) {
 		ret := NewBring(&buf, blockSize)
 		return &ret
 	}
-	sendLocalBlock := func(blobSize int64) func(*descEncoder) {
-		return func(d *descEncoder) {
-			d.sendBlob()
+	sendLocalBlock := func(blobSize int64) func(*blockEncoder) {
+		return func(d *blockEncoder) {
+			d.sendLocalBlock()
 			d.off += blobSize
 		}
 	}
-	sendRemoteBlock := func(id int) func(*descEncoder) {
-		return func(d *descEncoder) {
-			d.sendReuse(id)
+	sendRemoteBlock := func(id int) func(*blockEncoder) {
+		return func(d *blockEncoder) {
+			d.sendRemoteBlock(id)
 		}
 	}
-	flush := func() func(*descEncoder) { return func(d *descEncoder) { d.flush() } }
+	flush := func() func(*blockEncoder) { return func(d *blockEncoder) { d.flush() } }
 	var tests = []struct {
-		in    descEncoder
-		calls []func(*descEncoder)
+		in    blockEncoder
+		calls []func(*blockEncoder)
 		want  *mergeDscEnc
 	}{
 		{
-			in: descEncoder{
+			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(4),
 				bsize:         4,
 				lastBlockID:   0,
 				lastBlockSize: 4,
 			},
-			calls: []func(d *descEncoder){
+			calls: []func(d *blockEncoder){
 				sendRemoteBlock(2),
 				sendRemoteBlock(3),
 				sendRemoteBlock(4),
@@ -268,14 +268,14 @@ func TestDescEnc(t *testing.T) {
 			},
 		},
 		{
-			in: descEncoder{
+			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(8),
 				bsize:         8,
 				lastBlockID:   3,
 				lastBlockSize: 5,
 			},
-			calls: []func(d *descEncoder){
+			calls: []func(d *blockEncoder){
 				sendRemoteBlock(1),
 				sendRemoteBlock(2),
 				sendRemoteBlock(3),
@@ -292,14 +292,14 @@ func TestDescEnc(t *testing.T) {
 			},
 		},
 		{
-			in: descEncoder{
+			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(8),
 				bsize:         8,
 				lastBlockID:   5,
 				lastBlockSize: 5,
 			},
-			calls: []func(d *descEncoder){
+			calls: []func(d *blockEncoder){
 				sendLocalBlock(3),
 				sendRemoteBlock(0),
 				sendRemoteBlock(1),

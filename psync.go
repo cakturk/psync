@@ -68,7 +68,7 @@ var errShortRead = errors.New("unexpected EOF")
 //
 // x x x x x x x x x x x x x x x x x x x x x x
 //         |       0     1
-// TODO: calc merge offsets, coalesce concecutive reusable blocks into single
+// TODO: calc merge offsets, coalesce concecutive blocks into single
 // merge descriptor.
 func sendBlockDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) error {
 	if e.dst.Size == 0 {
@@ -81,7 +81,7 @@ func sendBlockDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) erro
 	rh := adler32.New()
 	mh := md5.New()
 	var err error
-	de := descEncoder{
+	ben := blockEncoder{
 		enc:           enc,
 		r:             &cr,
 		bsize:         chunkSize,
@@ -107,13 +107,13 @@ Outer:
 			}
 		}
 		log.Printf("head0: %q, tail: %q, adler: %x", cr.HeadPeek(), cr.TailPeek(), rh.Sum32())
-		ch, ok := e.dst.chunks[rh.Sum32()]
+		ch, ok := e.dst.sums[rh.Sum32()]
 		if ok {
 			log.Println("wow I feel good!")
 			mh.Reset()
 			io.CopyN(mh, cr.Tail(), chunkSize)
-			if bytes.Equal(mh.Sum(nil), ch.Sum) {
-				de.sendReuse(ch.id)
+			if bytes.Equal(mh.Sum(nil), ch.Csum) {
+				ben.sendRemoteBlock(ch.id)
 				continue
 			}
 			log.Println("but not sooo good")
@@ -130,26 +130,26 @@ Outer:
 			}
 			rh.Roll(c)
 			log.Printf("%q, adler: 0x%x", c, rh.Sum32())
-			ch, ok = e.dst.chunks[rh.Sum32()]
+			ch, ok = e.dst.sums[rh.Sum32()]
 			if !ok {
 				continue
 			}
 			mh.Reset()
 			io.CopyN(mh, cr.Tail(), chunkSize)
-			if bytes.Equal(mh.Sum(nil), ch.Sum) {
+			if bytes.Equal(mh.Sum(nil), ch.Csum) {
 				// block matched, send head bytes at first
 				if i > 0 {
-					err = de.sendBlob()
+					err = ben.sendLocalBlock()
 					if err != nil {
 						log.Printf("4 break: %d", cr.HeadLen())
 						return err
 					}
 				}
-				de.sendReuse(ch.id)
+				ben.sendRemoteBlock(ch.id)
 				continue Outer
 			}
 		}
-		err = de.sendBlob()
+		err = ben.sendLocalBlock()
 		// enc.Encode(Blob)
 		// log.Printf(
 		// 	"headlen: %d, head: %q, tail: %q",
@@ -163,7 +163,7 @@ Outer:
 			return err
 		}
 	}
-	err = de.flush()
+	err = ben.flush()
 	if err != nil {
 		log.Printf("6 break: %d", cr.HeadLen())
 		return err
@@ -172,7 +172,7 @@ Outer:
 	return nil
 }
 
-type descEncoder struct {
+type blockEncoder struct {
 	enc        Encoder
 	r          *Bring
 	bsize, off int64
@@ -188,7 +188,7 @@ type descEncoder struct {
 	contiguousBsize int64
 }
 
-func (d *descEncoder) findBlockSize(id int) int64 {
+func (d *blockEncoder) findBlockSize(id int) int64 {
 	if id == d.lastBlockID {
 		return d.lastBlockSize
 	}
@@ -196,7 +196,7 @@ func (d *descEncoder) findBlockSize(id int) int64 {
 }
 
 // TODO: Occasionally tries to send 1-byte blobs.
-func (d *descEncoder) sendBlob() error {
+func (d *blockEncoder) sendLocalBlock() error {
 	if _, ok := d.prevID(); ok {
 		err := d.flushReuseChunks()
 		if err != nil {
@@ -219,7 +219,7 @@ func (d *descEncoder) sendBlob() error {
 	return err
 }
 
-func (d *descEncoder) prevID() (id int, set bool) {
+func (d *blockEncoder) prevID() (id int, set bool) {
 	id = d.previousID - 1
 	if id >= 0 {
 		set = true
@@ -227,10 +227,10 @@ func (d *descEncoder) prevID() (id int, set bool) {
 	return
 }
 
-func (d *descEncoder) setPrevID(id int) { d.previousID = id + 1 }
-func (d *descEncoder) resetPrevID()     { d.setPrevID(-1) }
+func (d *blockEncoder) setPrevID(id int) { d.previousID = id + 1 }
+func (d *blockEncoder) resetPrevID()     { d.setPrevID(-1) }
 
-func (d *descEncoder) sendReuse(id int) error {
+func (d *blockEncoder) sendRemoteBlock(id int) error {
 	bsize := d.findBlockSize(id)
 	d.r.Skip(int(bsize))
 	prevID, set := d.prevID()
@@ -251,7 +251,7 @@ func (d *descEncoder) sendReuse(id int) error {
 	return nil
 }
 
-func (d *descEncoder) flushReuseChunks() error {
+func (d *blockEncoder) flushReuseChunks() error {
 	prevID, ok := d.prevID()
 	if !ok {
 		return nil
@@ -272,7 +272,7 @@ func (d *descEncoder) flushReuseChunks() error {
 	return err
 }
 
-func (d *descEncoder) flush() error {
+func (d *blockEncoder) flush() error {
 	err := d.flushReuseChunks()
 	if err != nil {
 		return err
@@ -337,11 +337,11 @@ type SenderSrcFile struct {
 	dst SenderDstFile // used by sender only
 }
 
-// SenderChunk is a convenience type to represent Chunk
+// SenderBlockSum is a convenience type to represent Chunk
 // info in sender side
-type SenderChunk struct {
+type SenderBlockSum struct {
 	id int // Chunk ID (index of chunk)
-	Chunk
+	BlockSum
 }
 
 type DstFile struct {
@@ -359,16 +359,16 @@ func (b *DstFile) LastChunkSize() int64 { return b.Size % int64(b.ChunkSize) }
 
 type SenderDstFile struct {
 	DstFile
-	chunks map[uint32]SenderChunk // used by sender
+	sums map[uint32]SenderBlockSum // used by sender
 }
 
-type Chunk struct {
+type BlockSum struct {
 	Rsum uint32
-	Sum  []byte
+	Csum []byte
 }
 
-func (c *Chunk) String() string {
-	return fmt.Sprintf("Rsum: %08x, Sum: %s", c.Rsum, hex.EncodeToString(c.Sum))
+func (c *BlockSum) String() string {
+	return fmt.Sprintf("Rsum: %08x, Sum: %s", c.Rsum, hex.EncodeToString(c.Csum))
 }
 
 func doChunkFile(r io.Reader, enc Encoder, blkSize int) error {
@@ -386,9 +386,9 @@ func doChunkFile(r io.Reader, enc Encoder, blkSize int) error {
 				break
 			}
 		}
-		if err := enc.Encode(Chunk{
+		if err := enc.Encode(BlockSum{
 			Rsum: rol.Sum32(),
-			Sum:  sum.Sum(nil),
+			Csum: sum.Sum(nil),
 		}); err != nil {
 			return err
 		}
