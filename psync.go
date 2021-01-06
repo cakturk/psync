@@ -297,31 +297,73 @@ func (d *blockEncoder) flush() error {
 }
 
 type Decoder interface {
+	Read(p []byte) (n int, err error)
 	Decode(e interface{}) error
 }
 
-func buildFile(dec Decoder) error {
+type Receiver struct {
+	root     string
+	srcFiles []SrcFile
+	dec      Decoder
+}
+
+func (r *Receiver) buildFile() error {
 	var (
 		fd  FileDesc
 		typ BlockType
-		rb  RemoteBlock
 		lb  LocalBlock
+		rb  RemoteBlock
 	)
-	if err := dec.Decode(&fd); err != nil {
+	if err := r.dec.Decode(&fd); err != nil {
 		return err
+	}
+	// handle new file scenario do io.Copy or something like that
+	if fd.ID < 0 && fd.ID > len(r.srcFiles) {
+		return fmt.Errorf("there is no such file with id: %d", fd.ID)
 	}
 	if fd.Typ == NewFile {
-		// handle new file scenario do io.Copy or something like that
-		return nil
+		s := &r.srcFiles[fd.ID]
+		name := filepath.Join(r.root, s.Path)
+		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, s.Mode)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		n, err := io.Copy(f, r.dec)
+		if err != nil {
+			return err
+		}
+		if n != s.Size {
+			return fmt.Errorf(
+				"new file size mismatch: got %d, want %d",
+				n, s.Size,
+			)
+		}
+		return os.Chtimes(name, s.Mtime, s.Mtime)
 	}
-	if fd.Typ == PartialFile {
+	if fd.Typ != PartialFile {
 		return fmt.Errorf("unrecognized file descriptor type: %v", fd.Typ)
 	}
-	if err := dec.Decode(&typ); err != nil {
-		return err
+	for {
+		if err := r.dec.Decode(&typ); err != nil {
+			return err
+		}
+		switch typ {
+		case LocalBlockType:
+			if err := r.dec.Decode(&lb); err != nil {
+				return err
+			}
+		case RemoteBlockType:
+			if err := r.dec.Decode(&rb); err != nil {
+				return err
+			}
+		default:
+			panic("should not happen")
+		}
+
+		_ = rb
+		_ = lb
 	}
-	_ = rb
-	_ = lb
 	return nil
 }
 
