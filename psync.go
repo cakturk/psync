@@ -301,10 +301,27 @@ type Decoder interface {
 }
 
 func buildFile(dec Decoder) error {
-	var fd FileDesc
+	var (
+		fd  FileDesc
+		typ BlockType
+		rb  RemoteBlock
+		lb  LocalBlock
+	)
 	if err := dec.Decode(&fd); err != nil {
 		return err
 	}
+	if fd.Typ == NewFile {
+		// handle new file scenario do io.Copy or something like that
+		return nil
+	}
+	if fd.Typ == PartialFile {
+		return fmt.Errorf("unrecognized file descriptor type: %v", fd.Typ)
+	}
+	if err := dec.Decode(&typ); err != nil {
+		return err
+	}
+	_ = rb
+	_ = lb
 	return nil
 }
 
