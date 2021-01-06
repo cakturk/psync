@@ -300,10 +300,10 @@ type Sender struct {
 	r        io.ReadWriter
 	enc      Encoder
 	root     string
-	srcFiles []SrcFile
+	srcFiles []SenderSrcFile
 }
 
-func (s *Sender) sendDirections(id int, e *SenderSrcFile) error {
+func (s *Sender) sendBlockDescs(id int, e *SenderSrcFile) error {
 	if e.Size == 0 {
 		return nil
 	}
