@@ -316,38 +316,16 @@ type Receiver struct {
 }
 
 func (r *Receiver) buildFile() error {
-	var (
-		fd  FileDesc
-		typ BlockType
-		lb  LocalBlock
-		rb  RemoteBlock
-	)
+	var fd FileDesc
 	if err := r.dec.Decode(&fd); err != nil {
 		return err
 	}
-	// handle new file scenario do io.Copy or something like that
 	if fd.ID < 0 && fd.ID > len(r.srcFiles) {
 		return fmt.Errorf("there is no such file with id: %d", fd.ID)
 	}
+	// handle new file scenario do io.Copy or something like that
 	if fd.Typ == NewFile {
-		s := &r.srcFiles[fd.ID]
-		name := filepath.Join(r.root, s.Path)
-		f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, s.Mode)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		n, err := io.Copy(f, r.dec)
-		if err != nil {
-			return err
-		}
-		if n != s.Size {
-			return fmt.Errorf(
-				"new file size mismatch: got %d, want %d",
-				n, s.Size,
-			)
-		}
-		return os.Chtimes(name, s.Mtime, s.Mtime)
+		return r.create(&r.srcFiles[fd.ID])
 	}
 	if fd.Typ != PartialFile {
 		return fmt.Errorf("unrecognized file descriptor type: %v", fd.Typ)
@@ -364,41 +342,13 @@ func (r *Receiver) buildFile() error {
 		return err
 	}
 	defer f.Close()
-	_ = f
-	var off int64
-	for off < s.Size {
-		if err := r.dec.Decode(&typ); err != nil {
-			return err
-		}
-		switch typ {
-		case LocalBlockType:
-			if err := r.dec.Decode(&lb); err != nil {
-				return err
-			}
-			if off != lb.Off {
-				return fmt.Errorf("wrong file offset: want %d, got: %d", lb.Off, off)
-			}
-			if _, err := io.CopyN(tmp, r.dec, lb.Size); err != nil {
-				return err
-			}
-			off += lb.Size
-		case RemoteBlockType:
-			if err := r.dec.Decode(&rb); err != nil {
-				return err
-			}
-			if off != rb.Off {
-				return fmt.Errorf("wrong file offset: want %d, got: %d", lb.Off, off)
-			}
-			n, err := io.Copy(tmp, io.NewSectionReader(f, rb.Off, int64(rb.NrChunks*s.chunkSize)))
-			if err != nil {
-				return err
-			}
-			off += n
-		default:
-			panic("should not happen")
-		}
+	if err = r.merge(s, f, tmp); err != nil {
+		return err
 	}
-	return os.Rename(tmp.Name(), f.Name())
+	if err := os.Rename(tmp.Name(), f.Name()); err != nil {
+		return err
+	}
+	return os.Chtimes(f.Name(), s.Mtime, s.Mtime)
 }
 
 func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) error {
