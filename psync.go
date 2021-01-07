@@ -57,11 +57,18 @@ func (c BlockType) String() string {
 type RemoteBlock struct {
 	ChunkID  int
 	NrChunks int
-	Off      int64
+
+	// offset of existing block in the target file
+	// read offset in the similar file
+	Off int64
 }
 
 type LocalBlock struct {
-	Size, Off int64
+	Size int64
+
+	// offset of data block in the newly created file
+	// write offset in the target file
+	Off int64
 }
 
 var errShortRead = errors.New("unexpected EOF")
@@ -392,6 +399,65 @@ func (r *Receiver) buildFile() error {
 		}
 	}
 	return os.Rename(tmp.Name(), f.Name())
+}
+
+func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) error {
+	var (
+		typ BlockType
+		lb  LocalBlock
+		rb  RemoteBlock
+	)
+	var off int64
+	for off < s.Size {
+		if err := r.dec.Decode(&typ); err != nil {
+			return err
+		}
+		switch typ {
+		case LocalBlockType:
+			if err := r.dec.Decode(&lb); err != nil {
+				return err
+			}
+			if off != lb.Off {
+				return fmt.Errorf("wrong file offset: want %d, got: %d", lb.Off, off)
+			}
+			if _, err := io.CopyN(tmp, r.dec, lb.Size); err != nil {
+				return err
+			}
+			off += lb.Size
+		case RemoteBlockType:
+			if err := r.dec.Decode(&rb); err != nil {
+				return err
+			}
+			n, err := io.Copy(tmp, io.NewSectionReader(rd, rb.Off, int64(rb.NrChunks*s.chunkSize)))
+			if err != nil {
+				return err
+			}
+			off += n
+		default:
+			panic("should not happen")
+		}
+	}
+	return nil
+}
+
+func (r *Receiver) create(s *ReceiverSrcFile) error {
+	name := filepath.Join(r.root, s.Path)
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, s.Mode)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	n, err := io.Copy(f, r.dec)
+	if err != nil {
+		return err
+	}
+	if n != s.Size {
+		return fmt.Errorf(
+			"new file size mismatch: got %d, want %d",
+			n, s.Size,
+		)
+	}
+	return os.Chtimes(name, s.Mtime, s.Mtime)
 }
 
 type Sender struct {
