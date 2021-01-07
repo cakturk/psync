@@ -8,6 +8,7 @@ import (
 	"fmt"
 	stdadler32 "hash/adler32"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -303,7 +304,7 @@ type Decoder interface {
 
 type Receiver struct {
 	root     string
-	srcFiles []SrcFile
+	srcFiles []ReceiverSrcFile
 	dec      Decoder
 }
 
@@ -344,7 +345,21 @@ func (r *Receiver) buildFile() error {
 	if fd.Typ != PartialFile {
 		return fmt.Errorf("unrecognized file descriptor type: %v", fd.Typ)
 	}
-	for {
+	tmp, err := ioutil.TempFile("", "psync*.tmp")
+	if err != nil {
+		return err
+	}
+	defer tmp.Close()
+	defer os.Remove(tmp.Name())
+	s := &r.srcFiles[fd.ID]
+	f, err := os.Open(filepath.Join(r.root, s.Path))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_ = f
+	var off int64
+	for off < s.Size {
 		if err := r.dec.Decode(&typ); err != nil {
 			return err
 		}
@@ -353,18 +368,30 @@ func (r *Receiver) buildFile() error {
 			if err := r.dec.Decode(&lb); err != nil {
 				return err
 			}
+			if off != lb.Off {
+				return fmt.Errorf("wrong file offset: want %d, got: %d", lb.Off, off)
+			}
+			if _, err := io.CopyN(tmp, r.dec, lb.Size); err != nil {
+				return err
+			}
+			off += lb.Size
 		case RemoteBlockType:
 			if err := r.dec.Decode(&rb); err != nil {
 				return err
 			}
+			if off != rb.Off {
+				return fmt.Errorf("wrong file offset: want %d, got: %d", lb.Off, off)
+			}
+			n, err := io.Copy(tmp, io.NewSectionReader(f, rb.Off, int64(rb.NrChunks*s.chunkSize)))
+			if err != nil {
+				return err
+			}
+			off += n
 		default:
 			panic("should not happen")
 		}
-
-		_ = rb
-		_ = lb
 	}
-	return nil
+	return os.Rename(tmp.Name(), f.Name())
 }
 
 type Sender struct {

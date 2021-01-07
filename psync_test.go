@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/gob"
 	"encoding/hex"
 	"hash"
 	stdadler32 "hash/adler32"
@@ -331,6 +330,25 @@ func TestDescEnc(t *testing.T) {
 	}
 }
 
+func TestBuilder(t *testing.T) {
+	receiver := Receiver{
+		root: "",
+		srcFiles: []ReceiverSrcFile{
+			{
+				SrcFile: SrcFile{
+					Path:  "",
+					Mode:  0666,
+					Size:  222,
+					Mtime: time.Now(),
+				},
+				chunkSize: 8,
+			},
+		},
+		dec: nil,
+	}
+	_ = receiver
+}
+
 func TestLastChunkSize(t *testing.T) {
 	var tests = []struct {
 		in   DstFile
@@ -482,12 +500,4 @@ func TestExample(t *testing.T) {
 	//  over the lazy d: checksum 2f7a05a2
 	// over the lazy do: checksum 336a05f1
 	// ver the lazy dog: checksum 326205e9
-}
-
-func TestGob(t *testing.T) {
-	var b bytes.Buffer
-	enc := gob.NewEncoder(&b)
-	_ = enc
-	dec := gob.NewDecoder(&b)
-	_ = dec
 }
