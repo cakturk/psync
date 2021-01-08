@@ -46,9 +46,9 @@ const (
 func (c BlockType) String() string {
 	switch c {
 	case RemoteBlockType:
-		return "LocalBlockType"
-	case LocalBlockType:
 		return "RemoteBlockType"
+	case LocalBlockType:
+		return "LocalBlockType"
 	default:
 		return "Unknown block type"
 	}
@@ -368,7 +368,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 				return err
 			}
 			if off != lb.Off {
-				return fmt.Errorf("wrong file offset: want %d, got: %d", lb.Off, off)
+				return fmt.Errorf("bad file offset: want %d, got: %d", lb.Off, off)
 			}
 			if _, err := io.CopyN(tmp, r.dec, lb.Size); err != nil {
 				return err
@@ -378,7 +378,27 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			if err := r.dec.Decode(&rb); err != nil {
 				return err
 			}
-			n, err := io.Copy(tmp, io.NewSectionReader(rd, rb.Off, int64(rb.NrChunks*s.chunkSize)))
+			// XXX: rb.Off is not a remote file offset. Instead it
+			// is the local, newly created file's write offset. The
+			// read offset should be something like rb.ChunkID *
+			// chunkSize.
+			// XXX: Currently, we are not using the write offset
+			// assuming all the block descriptors (RemoteBlock,
+			// LocalBlock) are received sequentially, thus we assume
+			// that the file's current write offset is the valid
+			// file offset. However, this assumption could lead to
+			// subtle errors if we send descriptors out of order.
+			if off != rb.Off {
+				return fmt.Errorf("bad file offset: want %d, got: %d", rb.Off, off)
+			}
+			n, err := io.Copy(
+				tmp,
+				io.NewSectionReader(
+					rd,
+					int64(rb.ChunkID*s.chunkSize),
+					int64(rb.NrChunks*s.chunkSize),
+				),
+			)
 			if err != nil {
 				return err
 			}
@@ -388,6 +408,13 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		}
 	}
 	return nil
+}
+
+func decodeErr(err error) error {
+	if err == io.EOF {
+		return nil
+	}
+	return err
 }
 
 func (r *Receiver) create(s *ReceiverSrcFile) error {
@@ -441,7 +468,8 @@ type ReceiverSrcFile struct {
 	SrcFile
 
 	// following fields are not serialized
-	chunkSize int // used by receiver only
+	dstFileSize int64
+	chunkSize   int // used by receiver only
 }
 
 // SenderSrcFile is a convenience type to represent SrcFile
@@ -545,6 +573,7 @@ func SendDstFiles(root string, chunkSize int, list []ReceiverSrcFile, enc Encode
 			return err
 		}
 		list[i].chunkSize = chunkSize
+		list[i].dstFileSize = info.Size()
 		if err := chunkFile(path, enc, chunkSize); err != nil {
 			return err
 		}

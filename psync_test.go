@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/gob"
 	"encoding/hex"
 	"hash"
 	stdadler32 "hash/adler32"
@@ -330,23 +331,69 @@ func TestDescEnc(t *testing.T) {
 	}
 }
 
+func createFakeDecoder(a ...interface{}) Decoder {
+	var b bytes.Buffer
+	enc := gob.NewEncoder(&b)
+	for _, v := range a {
+		p, ok := v.([]byte)
+		if ok {
+			_, err := b.Write(p)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			err := enc.Encode(v)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+	type fakeDecoder struct {
+		*gob.Decoder
+		io.Reader
+	}
+	fk := fakeDecoder{
+		Decoder: gob.NewDecoder(&b),
+		Reader:  &b,
+	}
+	return &fk
+}
+
 func TestBuilder(t *testing.T) {
-	receiver := Receiver{
+	rcv := Receiver{
 		root: "",
 		srcFiles: []ReceiverSrcFile{
 			{
 				SrcFile: SrcFile{
 					Path:  "",
 					Mode:  0666,
-					Size:  222,
+					Size:  27,
 					Mtime: time.Now(),
 				},
 				chunkSize: 8,
 			},
 		},
-		dec: nil,
+		dec: createFakeDecoder(
+			LocalBlockType,
+			LocalBlock{
+				Size: 10,
+				Off:  0,
+			},
+			[]byte("foobarbazp"),
+			RemoteBlockType,
+			RemoteBlock{
+				ChunkID:  2,
+				NrChunks: 2,
+				Off:      10,
+			},
+		),
 	}
-	_ = receiver
+	var b bytes.Buffer
+	err := rcv.merge(&rcv.srcFiles[0], strings.NewReader(orig), &b)
+	if err != nil {
+		t.Error(err)
+		t.Fatalf("file: %q", b.String())
+	}
 }
 
 func TestLastChunkSize(t *testing.T) {
