@@ -360,6 +360,10 @@ func createFakeDecoder(a ...interface{}) Decoder {
 }
 
 func TestBuilder(t *testing.T) {
+	// origBlocks := []string{
+	// 	"01234567", "890abcde", "f\nghijkl", "mnopqrst",
+	// 	"uvwxyz\np", "lan9From", "BellLabs", "\n",
+	// }
 	rcv := Receiver{
 		root: "",
 		srcFiles: []ReceiverSrcFile{
@@ -367,7 +371,7 @@ func TestBuilder(t *testing.T) {
 				SrcFile: SrcFile{
 					Path:  "",
 					Mode:  0666,
-					Size:  27,
+					Size:  39,
 					Mtime: time.Now(),
 				},
 				chunkSize: 8,
@@ -385,6 +389,24 @@ func TestBuilder(t *testing.T) {
 				ChunkID:  2,
 				NrChunks: 2,
 				Off:      10,
+			},
+			RemoteBlockType,
+			RemoteBlock{
+				ChunkID:  6,
+				NrChunks: 1,
+				Off:      26,
+			},
+			LocalBlockType,
+			LocalBlock{
+				Size: 4,
+				Off:  34,
+			},
+			[]byte("heap"),
+			RemoteBlockType,
+			RemoteBlock{
+				ChunkID:  7,
+				NrChunks: 1,
+				Off:      38,
 			},
 		),
 	}

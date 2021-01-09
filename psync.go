@@ -399,14 +399,21 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 					int64(rb.NrChunks*s.chunkSize),
 				),
 			)
+			off += n
 			if err != nil {
+				// last block may be smaller than the others. So check
+				// the file size first to see if this is an error we can
+				// perfectly ignore.
+				if err == io.EOF && off == s.Size {
+					break
+				}
 				return err
 			}
-			off += n
 		default:
 			panic("should not happen")
 		}
 	}
+	// TODO: check exact file size before returning?
 	return nil
 }
 
