@@ -364,57 +364,149 @@ func TestBuilder(t *testing.T) {
 	// 	"01234567", "890abcde", "f\nghijkl", "mnopqrst",
 	// 	"uvwxyz\np", "lan9From", "BellLabs", "\n",
 	// }
-	rcv := Receiver{
-		root: "",
-		srcFiles: []ReceiverSrcFile{
-			{
-				SrcFile: SrcFile{
-					Path:  "",
-					Mode:  0666,
-					Size:  39,
-					Mtime: time.Now(),
+	var tests = []struct {
+		rcv  Receiver
+		want string
+	}{
+		{
+			rcv: Receiver{
+				root: "",
+				srcFiles: []ReceiverSrcFile{
+					{
+						SrcFile: SrcFile{
+							Path:  "",
+							Mode:  0666,
+							Size:  39,
+							Mtime: time.Now(),
+						},
+						chunkSize: 8,
+					},
 				},
-				chunkSize: 8,
+				dec: createFakeDecoder(
+					LocalBlockType,
+					LocalBlock{
+						Size: 10,
+						Off:  0,
+					},
+					[]byte("foobarbazp"),
+					RemoteBlockType,
+					RemoteBlock{
+						ChunkID:  2,
+						NrChunks: 2,
+						Off:      10,
+					},
+					RemoteBlockType,
+					RemoteBlock{
+						ChunkID:  6,
+						NrChunks: 1,
+						Off:      26,
+					},
+					LocalBlockType,
+					LocalBlock{
+						Size: 4,
+						Off:  34,
+					},
+					[]byte("heap"),
+					RemoteBlockType,
+					RemoteBlock{
+						ChunkID:  7,
+						NrChunks: 1,
+						Off:      38,
+					},
+				),
 			},
+			want: "foobarbazpf\nghijklmnopqrstBellLabsheap\n",
 		},
-		dec: createFakeDecoder(
-			LocalBlockType,
-			LocalBlock{
-				Size: 10,
-				Off:  0,
+		{
+			rcv: Receiver{
+				root: "",
+				srcFiles: []ReceiverSrcFile{
+					{
+						SrcFile: SrcFile{
+							Path:  "",
+							Mode:  0666,
+							Size:  29,
+							Mtime: time.Now(),
+						},
+						chunkSize: 8,
+					},
+				},
+				dec: createFakeDecoder(
+					RemoteBlockType,
+					RemoteBlock{
+						ChunkID:  5,
+						NrChunks: 2,
+						Off:      0,
+					},
+					LocalBlockType,
+					LocalBlock{
+						Size: 4,
+						Off:  16,
+					},
+					[]byte("heap"),
+					RemoteBlockType,
+					RemoteBlock{
+						ChunkID:  0,
+						NrChunks: 1,
+						Off:      20,
+					},
+					RemoteBlockType,
+					RemoteBlock{
+						ChunkID:  7,
+						NrChunks: 1,
+						Off:      28,
+					},
+				),
 			},
-			[]byte("foobarbazp"),
-			RemoteBlockType,
-			RemoteBlock{
-				ChunkID:  2,
-				NrChunks: 2,
-				Off:      10,
+			want: "lan9FromBellLabsheap01234567\n",
+		},
+		{
+			rcv: Receiver{
+				root: "",
+				srcFiles: []ReceiverSrcFile{
+					{
+						SrcFile: SrcFile{
+							Path:  "",
+							Mode:  0666,
+							Size:  8,
+							Mtime: time.Now(),
+						},
+						chunkSize: 8,
+					},
+				},
+				dec: createFakeDecoder(
+					LocalBlockType,
+					LocalBlock{
+						Size: 3,
+						Off:  0,
+					},
+					[]byte("SOH"),
+					RemoteBlockType,
+					RemoteBlock{
+						ChunkID:  7,
+						NrChunks: 1,
+						Off:      3,
+					},
+					LocalBlockType,
+					LocalBlock{
+						Size: 4,
+						Off:  4,
+					},
+					[]byte("sinh"),
+				),
 			},
-			RemoteBlockType,
-			RemoteBlock{
-				ChunkID:  6,
-				NrChunks: 1,
-				Off:      26,
-			},
-			LocalBlockType,
-			LocalBlock{
-				Size: 4,
-				Off:  34,
-			},
-			[]byte("heap"),
-			RemoteBlockType,
-			RemoteBlock{
-				ChunkID:  7,
-				NrChunks: 1,
-				Off:      38,
-			},
-		),
+			want: "SOH\nsinh",
+		},
 	}
-	var b bytes.Buffer
-	err := rcv.merge(&rcv.srcFiles[0], strings.NewReader(orig), &b)
-	if err != nil {
-		t.Error(err)
-		t.Fatalf("file: %q", b.String())
+	for _, tt := range tests {
+		var b bytes.Buffer
+		err := tt.rcv.merge(&tt.rcv.srcFiles[0], strings.NewReader(orig), &b)
+		if err != nil {
+			t.Error(err)
+		}
+		if got := b.String(); got != tt.want {
+			t.Fatalf("merge(...) = %q, want %q", got, tt.want)
+		}
 	}
 }
 

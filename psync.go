@@ -352,29 +352,31 @@ func (r *Receiver) buildFile() error {
 }
 
 func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) error {
-	var (
-		typ BlockType
-		lb  LocalBlock
-		rb  RemoteBlock
-	)
 	var off int64
 	for off < s.Size {
+		var typ BlockType
 		if err := r.dec.Decode(&typ); err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
 		}
 		switch typ {
 		case LocalBlockType:
+			var lb LocalBlock
 			if err := r.dec.Decode(&lb); err != nil {
 				return err
 			}
 			if off != lb.Off {
-				return fmt.Errorf("bad file offset: want %d, got: %d", lb.Off, off)
+				return fmt.Errorf("local bad file offset: want %d, got: %d", lb.Off, off)
 			}
-			if _, err := io.CopyN(tmp, r.dec, lb.Size); err != nil {
+			n, err := io.CopyN(tmp, r.dec, lb.Size)
+			off += n
+			if err != nil {
 				return err
 			}
-			off += lb.Size
 		case RemoteBlockType:
+			var rb RemoteBlock
 			if err := r.dec.Decode(&rb); err != nil {
 				return err
 			}
@@ -389,7 +391,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			// file offset. However, this assumption could lead to
 			// subtle errors if we send descriptors out of order.
 			if off != rb.Off {
-				return fmt.Errorf("bad file offset: want %d, got: %d", rb.Off, off)
+				return fmt.Errorf("remote bad file offset: want %d, got: %d", rb.Off, off)
 			}
 			n, err := io.Copy(
 				tmp,
@@ -414,6 +416,9 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		}
 	}
 	// TODO: check exact file size before returning?
+	if off < s.Size {
+		return fmt.Errorf("unexpected EOF: off: %d, size: %d", off, s.Size)
+	}
 	return nil
 }
 
