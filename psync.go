@@ -78,7 +78,7 @@ var errShortRead = errors.New("unexpected EOF")
 //         |       0     1
 // TODO: calc merge offsets, coalesce concecutive blocks into single
 // merge descriptor.
-func sendBlockDescs(r io.ReadSeeker, id int, e *SenderSrcFile, enc Encoder) error {
+func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc Encoder) error {
 	if e.dst.Size == 0 {
 		enc.Encode(FileDesc{ID: id, Typ: NewFile, TotalSize: e.Size})
 		_, err := io.Copy(enc, r)
@@ -422,13 +422,6 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 	return nil
 }
 
-func decodeErr(err error) error {
-	if err == io.EOF {
-		return nil
-	}
-	return err
-}
-
 func (r *Receiver) create(s *ReceiverSrcFile) error {
 	name := filepath.Join(r.root, s.Path)
 	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, s.Mode)
@@ -450,7 +443,6 @@ func (r *Receiver) create(s *ReceiverSrcFile) error {
 }
 
 type Sender struct {
-	r        io.ReadWriter
 	enc      Encoder
 	root     string
 	srcFiles []SenderSrcFile
@@ -488,7 +480,10 @@ type ReceiverSrcFile struct {
 // info in sender side
 type SenderSrcFile struct {
 	SrcFile
-	dst SenderDstFile // used by sender only
+
+	// used by sender only. This field filled with the
+	// information received from sender.
+	dst SenderDstFile
 }
 
 // SenderBlockSum is a convenience type to represent Chunk
@@ -593,7 +588,7 @@ func SendDstFiles(root string, chunkSize int, list []ReceiverSrcFile, enc Encode
 	return nil
 }
 
-func GenSyncList(root string) ([]SrcFile, error) {
+func genSrcFileList(root string) ([]SrcFile, error) {
 	var list []SrcFile
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -630,7 +625,7 @@ func main() {
 		// fmt.Printf("sum: %x\n", h.Sum32())
 		h.Roll(v)
 	}
-	l, err := GenSyncList("/tmp/sil/seki")
+	l, err := genSrcFileList("/tmp/sil/seki")
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	}

@@ -5,10 +5,8 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/hex"
-	"hash"
 	stdadler32 "hash/adler32"
 	"io"
-	"log"
 	"strings"
 	"testing"
 	"time"
@@ -16,24 +14,6 @@ import (
 	"github.com/chmduquesne/rollinghash/adler32"
 	"github.com/google/go-cmp/cmp"
 )
-
-type sliceEncoder []interface{}
-
-func (s *sliceEncoder) Write(p []byte) (n int, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (s *sliceEncoder) Encode(e interface{}) error {
-	*s = append(*s, e)
-	return nil
-}
-
-type strSliceWriter []string
-
-func (s *strSliceWriter) Write(p []byte) (n int, err error) {
-	*s = append(*s, string(p))
-	return len(p), nil
-}
 
 // stdlib adler32
 // psync_test.go|343| "beam me " cf302a8
@@ -82,25 +62,57 @@ func TestRollingAdler32(t *testing.T) {
 	}
 }
 
+type strSliceWriter []string
+
+func (s *strSliceWriter) Write(p []byte) (n int, err error) {
+	*s = append(*s, string(p))
+	return len(p), nil
+}
+
+func digest(t *testing.T, s string) []byte {
+	t.Helper()
+	m, err := hex.DecodeString(s)
+	if err != nil {
+		t.Fatalf("failed to decode string: %q", s)
+	}
+	return m
+}
+
 func TestDoChunkFile(t *testing.T) {
+	digest := func(s string) []byte { return digest(t, s) }
 	f := strings.NewReader(orig)
 	var buf strSliceWriter
 	tr := io.TeeReader(f, &buf)
-	enc := sliceEncoder{}
+	enc := mergeDscEnc{}
 	if err := doChunkFile(tr, &enc, 8); err != nil {
 		t.Fatal(err)
 	}
+	var sums []BlockSum
 	for _, v := range enc {
 		ch := v.(BlockSum)
-		t.Errorf("%v", &ch)
+		sums = append(sums, ch)
+		// t.Errorf("%v", &ch)
 	}
-	t.Fatalf("%#v", buf)
+	// t.Fatalf("%#v", buf)
+	want := []BlockSum{
+		BlockSum{Rsum: 0x071c019d, Csum: digest("2e9ec317e197819358fbc43afca7d837")},
+		BlockSum{Rsum: 0x0a3a0291, Csum: digest("0971ea36560f190d33257a3722f2b08c")},
+		BlockSum{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
+		BlockSum{Rsum: 0x0fb00385, Csum: digest("a70900006e6c6e510d501865a9f65efd")},
+		BlockSum{Rsum: 0x0fc20328, Csum: digest("aa7e6f7af8d9f4ce4bbe37c99645068a")},
+		BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
+		BlockSum{Rsum: 0x0d090302, Csum: digest("008f7a640603fa380ae5fa52eddb1f9f")},
+		BlockSum{Rsum: 0x000b000b, Csum: digest("68b329da9893e34099c7d8ad5cb9c940")},
+	}
+	if diff := cmp.Diff(want, sums); diff != "" {
+		t.Fatalf("doChunkFile() mismatch (-want, +got):\n%s", diff)
+	}
 }
 
 type mergeDscEnc []interface{}
 
 func (s *mergeDscEnc) Write(p []byte) (n int, err error) {
-	log.Printf("write invoked: %d, %q", len(p), p)
+	// log.Printf("write invoked: %d, %q", len(p), p)
 	*s = append(*s, p)
 	return len(p), nil
 }
@@ -149,13 +161,7 @@ func TestMergeDesc(t *testing.T) {
 
 		RemoteBlockType, RemoteBlock{ChunkID: 5, NrChunks: 3, Off: 42},
 	}
-	digest := func(s string) []byte {
-		m, err := hex.DecodeString(s)
-		if err != nil {
-			t.Fatalf("failed to decode string: %q", s)
-		}
-		return m
-	}
+	digest := func(s string) []byte { return digest(t, s) }
 	src := &SenderSrcFile{
 		SrcFile: SrcFile{
 			Path:  "",
@@ -537,62 +543,63 @@ func TestHowMany(t *testing.T) {
 	}
 }
 
-// func TestRollingReader(t *testing.T) {
-// 	var tt = []struct {
-// 		in     string
-// 		window int
-// 		want   []string
-// 	}{
-// 		{
-// 			"abcdefghij",
-// 			4,
-// 			[]string{
-// 				"abcd", "bcde", "cdef", "defg",
-// 				"efgh", "fghi", "ghij",
-// 			},
-// 		},
-// 		{
-// 			"Plan 9 from outer space",
-// 			4,
-// 			[]string{
-// 				"Plan", "lan ", "an 9", "n 9 ", " 9 f",
-// 				"9 fr", " fro", "from", "rom ", "om o",
-// 				"m ou", " out", "oute", "uter", "ter ",
-// 				"er s", "r sp", " spa", "spac", "pace",
-// 			},
-// 		},
-// 		{
-// 			"xyz",
-// 			4,
-// 			[]string{"xyz"},
-// 		},
-// 	}
-// 	read := func(s string, w int) ([]string, error) {
-// 		rr, err := NewRollingReader(bufio.NewReader(strings.NewReader(s)), w)
-// 		if err != nil {
-// 			return nil, fmt.Errorf("wtf: %w", err)
-// 		}
-// 		var sl []string
-// 		buf := make([]byte, w)
-// 		for {
-// 			n, err := rr.Read(buf)
-// 			if err != nil {
-// 				return sl, err
-// 			}
-// 			sl = append(sl, string(buf[:n]))
-// 		}
-// 	}
-// 	for _, tc := range tt {
-// 		got, err := read(tc.in, tc.window)
-// 		if err != nil && err != io.EOF {
-// 			t.Fatalf("failed: %v", err)
-// 		}
-// 		if !reflect.DeepEqual(got, tc.want) {
-// 			t.Errorf("in: %q, got: %q, want: %q", tc.in, got, tc.want)
-// 		}
+/*
+func TestRollingReader(t *testing.T) {
+	var tt = []struct {
+		in     string
+		window int
+		want   []string
+	}{
+		{
+			"abcdefghij",
+			4,
+			[]string{
+				"abcd", "bcde", "cdef", "defg",
+				"efgh", "fghi", "ghij",
+			},
+		},
+		{
+			"Plan 9 from outer space",
+			4,
+			[]string{
+				"Plan", "lan ", "an 9", "n 9 ", " 9 f",
+				"9 fr", " fro", "from", "rom ", "om o",
+				"m ou", " out", "oute", "uter", "ter ",
+				"er s", "r sp", " spa", "spac", "pace",
+			},
+		},
+		{
+			"xyz",
+			4,
+			[]string{"xyz"},
+		},
+	}
+	read := func(s string, w int) ([]string, error) {
+		rr, err := NewRollingReader(bufio.NewReader(strings.NewReader(s)), w)
+		if err != nil {
+			return nil, fmt.Errorf("wtf: %w", err)
+		}
+		var sl []string
+		buf := make([]byte, w)
+		for {
+			n, err := rr.Read(buf)
+			if err != nil {
+				return sl, err
+			}
+			sl = append(sl, string(buf[:n]))
+		}
+	}
+	for _, tc := range tt {
+		got, err := read(tc.in, tc.window)
+		if err != nil && err != io.EOF {
+			t.Fatalf("failed: %v", err)
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("in: %q, got: %q, want: %q", tc.in, got, tc.want)
+		}
 
-// 	}
-// }
+	}
+}
 
 func TestExample(t *testing.T) {
 	s := []byte("The quick brown fox jumps over the lazy dog")
@@ -662,3 +669,4 @@ func TestExample(t *testing.T) {
 	// over the lazy do: checksum 336a05f1
 	// ver the lazy dog: checksum 326205e9
 }
+*/
