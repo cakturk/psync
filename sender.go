@@ -293,6 +293,12 @@ func (d *blockEncoder) flush() error {
 	return err
 }
 
+// Sender protocol is more or less as described below:
+// - send the total number of files as integers
+// - send as many source files submitted in the previous item,
+// - and then read the same number of target files from the receiver side.
+// - remember, each target file contains (*DstFile).NumChunks() number of
+//   blocks after it.
 func genSrcFileList(root string) ([]SrcFile, error) {
 	var list []SrcFile
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
