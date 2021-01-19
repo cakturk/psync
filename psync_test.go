@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/md5"
 	"encoding/gob"
 	"encoding/hex"
 	stdadler32 "hash/adler32"
@@ -95,14 +96,14 @@ func TestDoChunkFile(t *testing.T) {
 	}
 	// t.Fatalf("%#v", buf)
 	want := []BlockSum{
-		BlockSum{Rsum: 0x071c019d, Csum: digest("2e9ec317e197819358fbc43afca7d837")},
-		BlockSum{Rsum: 0x0a3a0291, Csum: digest("0971ea36560f190d33257a3722f2b08c")},
-		BlockSum{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
-		BlockSum{Rsum: 0x0fb00385, Csum: digest("a70900006e6c6e510d501865a9f65efd")},
-		BlockSum{Rsum: 0x0fc20328, Csum: digest("aa7e6f7af8d9f4ce4bbe37c99645068a")},
-		BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
-		BlockSum{Rsum: 0x0d090302, Csum: digest("008f7a640603fa380ae5fa52eddb1f9f")},
-		BlockSum{Rsum: 0x000b000b, Csum: digest("68b329da9893e34099c7d8ad5cb9c940")},
+		{Rsum: 0x071c019d, Csum: digest("2e9ec317e197819358fbc43afca7d837")},
+		{Rsum: 0x0a3a0291, Csum: digest("0971ea36560f190d33257a3722f2b08c")},
+		{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
+		{Rsum: 0x0fb00385, Csum: digest("a70900006e6c6e510d501865a9f65efd")},
+		{Rsum: 0x0fc20328, Csum: digest("aa7e6f7af8d9f4ce4bbe37c99645068a")},
+		{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
+		{Rsum: 0x0d090302, Csum: digest("008f7a640603fa380ae5fa52eddb1f9f")},
+		{Rsum: 0x000b000b, Csum: digest("68b329da9893e34099c7d8ad5cb9c940")},
 	}
 	if diff := cmp.Diff(want, sums); diff != "" {
 		t.Fatalf("doChunkFile() mismatch (-want, +got):\n%s", diff)
@@ -147,6 +148,7 @@ func TestMergeDesc(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sum := md5.Sum([]byte(modified))
 	want := &mergeDscEnc{
 		FileDesc{ID: 22, Typ: PartialFile, TotalSize: 0},
 		RemoteBlockType, RemoteBlock{ChunkID: 0, NrChunks: 3, Off: 0},
@@ -160,6 +162,8 @@ func TestMergeDesc(t *testing.T) {
 		[]byte("ified-la\nP"),
 
 		RemoteBlockType, RemoteBlock{ChunkID: 5, NrChunks: 3, Off: 42},
+
+		FileSum, sum[:],
 	}
 	digest := func(s string) []byte { return digest(t, s) }
 	src := &SenderSrcFile{
@@ -340,18 +344,23 @@ func TestDescEnc(t *testing.T) {
 func createFakeDecoder(a ...interface{}) Decoder {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
+	btype := RemoteBlockType
 	for _, v := range a {
-		p, ok := v.([]byte)
-		if ok {
-			_, err := b.Write(p)
-			if err != nil {
-				panic(err)
+		switch y := v.(type) {
+		case []byte:
+			if btype != FileSum {
+				_, err := b.Write(y)
+				if err != nil {
+					panic(err)
+				}
+				continue
 			}
-		} else {
-			err := enc.Encode(v)
-			if err != nil {
-				panic(err)
-			}
+		case BlockType:
+			btype = y
+		}
+		err := enc.Encode(v)
+		if err != nil {
+			panic(err)
 		}
 	}
 	type fakeDecoder struct {
@@ -370,6 +379,10 @@ func TestBuilder(t *testing.T) {
 	// 	"01234567", "890abcde", "f\nghijkl", "mnopqrst",
 	// 	"uvwxyz\np", "lan9From", "BellLabs", "\n",
 	// }
+	csum := func(s string) []byte {
+		sum := md5.Sum([]byte(s))
+		return sum[:]
+	}
 	var tests = []struct {
 		rcv  Receiver
 		want string
@@ -419,6 +432,8 @@ func TestBuilder(t *testing.T) {
 						NrChunks: 1,
 						Off:      38,
 					},
+					FileSum,
+					csum("foobarbazpf\nghijklmnopqrstBellLabsheap\n"),
 				),
 			},
 			want: "foobarbazpf\nghijklmnopqrstBellLabsheap\n",
@@ -462,6 +477,8 @@ func TestBuilder(t *testing.T) {
 						NrChunks: 1,
 						Off:      28,
 					},
+					FileSum,
+					csum("lan9FromBellLabsheap01234567\n"),
 				),
 			},
 			want: "lan9FromBellLabsheap01234567\n",
@@ -499,6 +516,8 @@ func TestBuilder(t *testing.T) {
 						Off:  4,
 					},
 					[]byte("sinh"),
+					FileSum,
+					csum("SOH\nsinh"),
 				),
 			},
 			want: "SOH\nsinh",

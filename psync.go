@@ -41,6 +41,7 @@ type BlockType byte
 const (
 	RemoteBlockType BlockType = iota
 	LocalBlockType
+	FileSum
 )
 
 func (c BlockType) String() string {
@@ -49,6 +50,8 @@ func (c BlockType) String() string {
 		return "RemoteBlockType"
 	case LocalBlockType:
 		return "LocalBlockType"
+	case FileSum:
+		return "FileSum"
 	default:
 		return "Unknown block type"
 	}
@@ -85,9 +88,11 @@ func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc Encoder) error {
 		return err
 	}
 	chunkSize := int64(e.dst.ChunkSize)
-	cr := NewBring(r, int(chunkSize))
 	rh := adler32.New()
 	mh := md5.New()
+	sum := md5.New()
+	r = io.TeeReader(r, sum)
+	cr := NewBring(r, int(chunkSize))
 	var err error
 	ben := blockEncoder{
 		enc:           enc,
@@ -177,6 +182,14 @@ Outer:
 		return err
 	}
 	log.Printf("prologue point: head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
+	err = enc.Encode(FileSum)
+	if err != nil {
+		return err
+	}
+	err = enc.Encode(sum.Sum(nil))
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -352,6 +365,8 @@ func (r *Receiver) buildFile() error {
 }
 
 func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) error {
+	sum := md5.New()
+	tmp = io.MultiWriter(tmp, sum)
 	var off int64
 	for off < s.Size {
 		var typ BlockType
@@ -418,6 +433,23 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 	// TODO: check exact file size before returning?
 	if off < s.Size {
 		return fmt.Errorf("unexpected EOF: off: %d, size: %d", off, s.Size)
+	}
+	var (
+		typ     BlockType
+		fileSum []byte
+	)
+	if err := r.dec.Decode(&typ); err != nil {
+		return err
+	}
+	if typ != FileSum {
+		return fmt.Errorf("unexpected block type: %v", typ)
+	}
+	if err := r.dec.Decode(&fileSum); err != nil {
+		log.Printf("sum: %v", fileSum)
+		return err
+	}
+	if csum := sum.Sum(nil); !bytes.Equal(csum, fileSum) {
+		return errors.New("checksum of file does not match the original")
 	}
 	return nil
 }
