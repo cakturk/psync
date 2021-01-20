@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -31,6 +33,8 @@ type SenderBlockSum struct {
 
 type SenderDstFile struct {
 	DstFile
+
+	// map key is adler32 hash of block
 	sums map[uint32]SenderBlockSum // used by sender
 }
 
@@ -293,14 +297,8 @@ func (d *blockEncoder) flush() error {
 	return err
 }
 
-// Sender protocol is more or less as described below:
-// - send the total number of files as integers
-// - send as many source files submitted in the previous item,
-// - and then read the same number of target files from the receiver side.
-// - remember, each target file contains (*DstFile).NumChunks() number of
-//   blocks after it.
-func genSrcFileList(root string) ([]SrcFile, error) {
-	var list []SrcFile
+func genSrcFileList(root string) ([]SenderSrcFile, error) {
+	var list []SenderSrcFile
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -309,13 +307,15 @@ func genSrcFileList(root string) ([]SrcFile, error) {
 		if err != nil {
 			return err
 		}
-		list = append(list, SrcFile{
-			Path:  rel,
-			Uid:   int(info.Sys().(*syscall.Stat_t).Uid),
-			Gid:   int(info.Sys().(*syscall.Stat_t).Gid),
-			Mode:  info.Mode(),
-			Size:  info.Size(),
-			Mtime: info.ModTime(),
+		list = append(list, SenderSrcFile{
+			SrcFile: SrcFile{
+				Path:  rel,
+				Uid:   int(info.Sys().(*syscall.Stat_t).Uid),
+				Gid:   int(info.Sys().(*syscall.Stat_t).Gid),
+				Mode:  info.Mode(),
+				Size:  info.Size(),
+				Mtime: info.ModTime(),
+			},
 		})
 		// fmt.Println(rel)
 		return nil
@@ -324,4 +324,43 @@ func genSrcFileList(root string) ([]SrcFile, error) {
 		return nil, err
 	}
 	return list, nil
+}
+
+func sendSrcFileList(enc Encoder, list []SenderSrcFile) error {
+	err := enc.Encode(len(list))
+	if err != nil {
+		return fmt.Errorf("sending src list header failed: %w", err)
+	}
+	for i := range list {
+		err := enc.Encode(&list[i].SrcFile)
+		if err != nil {
+			return fmt.Errorf("sending src list failed: %w", err)
+		}
+	}
+	return nil
+}
+
+func recvDstFileList(dec Decoder, list []SenderSrcFile) error {
+	for i := range list {
+		err := dec.Decode(&list[i].dst)
+		if err != nil {
+			return fmt.Errorf("failed to recv dst list: %w", err)
+		}
+		dst := &list[i].dst
+		dst.sums = make(map[uint32]SenderBlockSum)
+		nrBlocks := dst.NumChunks()
+		for i := 0; i < nrBlocks; i++ {
+			var bs SenderBlockSum
+			err := dec.Decode(&bs.BlockSum)
+			if err != nil {
+				return fmt.Errorf("recving block sum failed: %w", err)
+			}
+			bs.id = i
+			if _, ok := dst.sums[bs.Rsum]; ok {
+				return errors.New("duplicate block received")
+			}
+			dst.sums[bs.Rsum] = bs
+		}
+	}
+	return nil
 }
