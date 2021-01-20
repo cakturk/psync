@@ -86,6 +86,9 @@ type DstFile struct {
 }
 
 func (b *DstFile) NumChunks() int {
+	if b.ChunkSize <= 0 {
+		return 0
+	}
 	return int((b.Size + (int64(b.ChunkSize) - 1)) / int64(b.ChunkSize))
 }
 

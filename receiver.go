@@ -209,7 +209,7 @@ func chunkFile(path string, enc Encoder, blockSize int) error {
 	return doChunkFile(f, enc, blockSize)
 }
 
-func SendDstFiles(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) error {
+func sendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) error {
 	for i, v := range list {
 		path := filepath.Join(root, v.Path)
 		info, err := os.Stat(path)
@@ -239,4 +239,20 @@ func SendDstFiles(root string, chunkSize int, list []ReceiverSrcFile, enc Encode
 		}
 	}
 	return nil
+}
+
+func recvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {
+	var nrBlocks int
+	err := dec.Decode(&nrBlocks)
+	if err != nil {
+		return nil, fmt.Errorf("failed to recv src file list header: %w", err)
+	}
+	list := make([]ReceiverSrcFile, nrBlocks)
+	for i := range list {
+		err := dec.Decode(&list[i].SrcFile)
+		if err != nil {
+			return nil, fmt.Errorf("recving src list failed: %w", err)
+		}
+	}
+	return list, nil
 }
