@@ -60,16 +60,44 @@ func TestRecvDstFileList(t *testing.T) {
 		BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
 		BlockSum{Rsum: 0x0d090302, Csum: digest("008f7a640603fa380ae5fa52eddb1f9f")},
 		BlockSum{Rsum: 0x000b000b, Csum: digest("68b329da9893e34099c7d8ad5cb9c940")},
+		// New file
+		&DstFile{
+			ID:        1,
+			ChunkSize: 8,
+			Size:      0,
+		},
+		&DstFile{
+			ID:        2,
+			ChunkSize: 8,
+			Size:      20,
+		},
+		BlockSum{Rsum: 0x071c019d, Csum: digest("2e9ec317e197819358fbc43afca7d837")},
+		BlockSum{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
+		BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
+		&DstFile{
+			ID:        3,
+			ChunkSize: 4,
+			Size:      12,
+		},
+		BlockSum{Rsum: 0x071c019d, Csum: digest("2e9ec317e197819358fbc43afca7d837")},
+		BlockSum{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
+		BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
 	}
+	const nrFiles = 4
 	dec := createFakeDecoder(in...)
-	list := make([]SenderSrcFile, 1)
+	list := make([]SenderSrcFile, nrFiles)
 	err := recvDstFileList(dec, list)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got []interface{}
-	for _, s := range list {
+	for i := range list {
+		s := list[i]
 		got = append(got, &s.dst.DstFile)
+		numBlocks := s.dst.NumChunks()
+		if numBlocks <= 0 {
+			continue
+		}
 		sums := make([]interface{}, s.dst.NumChunks())
 		for _, bs := range s.dst.sums {
 			sums[bs.id] = bs.BlockSum

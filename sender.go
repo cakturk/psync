@@ -342,20 +342,24 @@ func sendSrcFileList(enc Encoder, list []SenderSrcFile) error {
 
 func recvDstFileList(dec Decoder, list []SenderSrcFile) error {
 	for i := range list {
-		err := dec.Decode(&list[i].dst)
+		err := dec.Decode(&list[i].dst.DstFile)
 		if err != nil {
 			return fmt.Errorf("failed to recv dst list: %w", err)
+		}
+		// sanity check
+		if id := list[i].dst.ID; id != i {
+			return fmt.Errorf("dst file invalid ID got: %d, want: %d", id, i)
 		}
 		dst := &list[i].dst
 		dst.sums = make(map[uint32]SenderBlockSum)
 		nrBlocks := dst.NumChunks()
-		for i := 0; i < nrBlocks; i++ {
+		for j := 0; j < nrBlocks; j++ {
 			var bs SenderBlockSum
 			err := dec.Decode(&bs.BlockSum)
 			if err != nil {
 				return fmt.Errorf("recving block sum failed: %w", err)
 			}
-			bs.id = i
+			bs.id = j
 			if _, ok := dst.sums[bs.Rsum]; ok {
 				return errors.New("duplicate block received")
 			}
