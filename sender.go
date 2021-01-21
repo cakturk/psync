@@ -326,8 +326,18 @@ func genSrcFileList(root string) ([]SenderSrcFile, error) {
 	return list, nil
 }
 
+// Sender protocol is more or less as described below:
+// - send the file list header (FileListHdr),
+// - send as many source files submitted in the previous item,
+// - and then read the same number of target files from the receiver side
+// - remember, each target file contains (*DstFile).NumChunks() number of
+//   blocks after it.
 func sendSrcFileList(enc Encoder, list []SenderSrcFile) error {
-	err := enc.Encode(len(list))
+	hdr := FileListHdr{
+		NumFiles: len(list),
+		Type:     SenderFileList,
+	}
+	err := enc.Encode(&hdr)
 	if err != nil {
 		return fmt.Errorf("sending src list header failed: %w", err)
 	}
@@ -341,7 +351,12 @@ func sendSrcFileList(enc Encoder, list []SenderSrcFile) error {
 }
 
 func recvDstFileList(dec Decoder, list []SenderSrcFile) error {
-	for i := range list {
+	var hdr FileListHdr
+	err := dec.Decode(&hdr)
+	if err != nil {
+		return fmt.Errorf("failed to recv dst header: %w", err)
+	}
+	for i := 0; i < hdr.NumFiles; i++ {
 		err := dec.Decode(&list[i].dst.DstFile)
 		if err != nil {
 			return fmt.Errorf("failed to recv dst list: %w", err)

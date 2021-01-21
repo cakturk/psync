@@ -33,7 +33,10 @@ func TestSendSrcFileList(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := mergeDscEnc{
-		len(in),
+		&FileListHdr{
+			NumFiles: len(in),
+			Type:     SenderFileList,
+		},
 	}
 	for i := range in {
 		want = append(want, &in[i].SrcFile)
@@ -46,7 +49,13 @@ func TestSendSrcFileList(t *testing.T) {
 
 func TestRecvDstFileList(t *testing.T) {
 	digest := func(s string) []byte { return digest(t, s) }
+	const nrFiles = 4
+	hdr := &FileListHdr{
+		NumFiles: nrFiles,
+		Type:     ReceiverFileList,
+	}
 	in := []interface{}{
+		hdr,
 		&DstFile{
 			ID:        0,
 			ChunkSize: 8,
@@ -83,7 +92,6 @@ func TestRecvDstFileList(t *testing.T) {
 		BlockSum{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
 		BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
 	}
-	const nrFiles = 4
 	dec := createFakeDecoder(in...)
 	list := make([]SenderSrcFile, nrFiles)
 	err := recvDstFileList(dec, list)
@@ -91,6 +99,7 @@ func TestRecvDstFileList(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got []interface{}
+	got = append(got, hdr)
 	for i := range list {
 		s := list[i]
 		got = append(got, &s.dst.DstFile)

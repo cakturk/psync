@@ -33,6 +33,19 @@ type FileDesc struct {
 	TotalSize int64
 }
 
+type FileListType byte
+
+const (
+	InvalidFileListType = iota
+	SenderFileList
+	ReceiverFileList
+)
+
+type FileListHdr struct {
+	NumFiles int
+	Type     FileListType
+}
+
 type BlockType byte
 
 const (
@@ -79,14 +92,29 @@ type SrcFile struct {
 	Mtime    time.Time
 }
 
+type DstFileType int
+
+const (
+	DstFileSimilar = iota
+	DstFileIdentical
+	DstFileNotExit
+)
+
 type DstFile struct {
 	ID        int
 	ChunkSize int
-	Size      int64 // 0 means this is a new file
+
+	// 0 means this is a new file.
+	// In this context, -1 means modification times and sizes of the
+	// two files do not differ, which means we consider them as two
+	// identical files.
+	Size int64
+
+	Type DstFileType
 }
 
 func (b *DstFile) NumChunks() int {
-	if b.ChunkSize <= 0 {
+	if b.ChunkSize <= 0 || b.Size <= 0 {
 		return 0
 	}
 	return int((b.Size + (int64(b.ChunkSize) - 1)) / int64(b.ChunkSize))
