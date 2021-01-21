@@ -209,10 +209,13 @@ func chunkFile(path string, enc Encoder, blockSize int) error {
 	return doChunkFile(f, enc, blockSize)
 }
 
+// modified during testing
+var osStat = os.Stat
+
 func sendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) error {
 	for i, v := range list {
 		path := filepath.Join(root, v.Path)
-		info, err := os.Stat(path)
+		info, err := osStat(path)
 		if err != nil {
 			if os.IsNotExist(err) {
 				if err := enc.Encode(DstFile{ID: i}); err != nil {
