@@ -97,7 +97,7 @@ type DstFileType int
 const (
 	DstFileSimilar = iota
 	DstFileIdentical
-	DstFileNotExit
+	DstFileNotExist
 )
 
 type DstFile struct {

@@ -62,7 +62,10 @@ func (s *Sender) sendBlockDescs(id int, e *SenderSrcFile) error {
 // TODO: calc merge offsets, coalesce concecutive blocks into single
 // merge descriptor.
 func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc Encoder) error {
-	if e.dst.Size == 0 {
+	if e.dst.Type == DstFileIdentical {
+		return nil
+	}
+	if e.dst.Type == DstFileNotExist {
 		enc.Encode(FileDesc{ID: id, Typ: NewFile, TotalSize: e.Size})
 		_, err := io.Copy(enc, r)
 		return err
