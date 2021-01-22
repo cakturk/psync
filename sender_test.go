@@ -49,7 +49,7 @@ func TestSendSrcFileList(t *testing.T) {
 
 func TestRecvDstFileList(t *testing.T) {
 	digest := func(s string) []byte { return digest(t, s) }
-	const nrFiles = 4
+	const nrFiles = 5
 	hdr := &FileListHdr{
 		NumFiles: nrFiles,
 		Type:     ReceiverFileList,
@@ -73,7 +73,7 @@ func TestRecvDstFileList(t *testing.T) {
 		&DstFile{
 			ID:        1,
 			ChunkSize: 8,
-			Size:      0,
+			Type:      DstFileNotExist,
 		},
 		&DstFile{
 			ID:        2,
@@ -91,6 +91,10 @@ func TestRecvDstFileList(t *testing.T) {
 		BlockSum{Rsum: 0x071c019d, Csum: digest("2e9ec317e197819358fbc43afca7d837")},
 		BlockSum{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
 		BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
+		&DstFile{
+			ID:   4,
+			Type: DstFileIdentical,
+		},
 	}
 	dec := createFakeDecoder(in...)
 	list := make([]SenderSrcFile, nrFiles)

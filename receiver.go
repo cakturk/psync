@@ -210,34 +210,55 @@ func chunkFile(path string, enc Encoder, blockSize int) error {
 }
 
 // modified during testing
-var osStat = os.Stat
+var (
+	osStat     = os.Stat
+	sendChunks = chunkFile
+)
 
 func sendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) error {
+	hdr := FileListHdr{
+		NumFiles: len(list),
+		Type:     ReceiverFileList,
+	}
+	err := enc.Encode(&hdr)
+	if err != nil {
+		return fmt.Errorf("sending dst list header failed: %w", err)
+	}
 	for i, v := range list {
 		path := filepath.Join(root, v.Path)
 		info, err := osStat(path)
 		if err != nil {
 			if os.IsNotExist(err) {
-				if err := enc.Encode(DstFile{ID: i}); err != nil {
+				if err := enc.Encode(DstFile{
+					ID:   i,
+					Type: DstFileNotExist,
+				}); err != nil {
 					return err
 				}
 				continue
 			}
-			return nil
+			return err
 		}
 		if info.ModTime() == v.Mtime && info.Size() == v.Size {
+			if err := enc.Encode(DstFile{
+				ID:   i,
+				Type: DstFileIdentical,
+			}); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := enc.Encode(DstFile{
 			ID:        i,
 			ChunkSize: chunkSize,
 			Size:      info.Size(),
+			Type:      DstFileSimilar,
 		}); err != nil {
 			return err
 		}
 		list[i].chunkSize = chunkSize
 		list[i].dstFileSize = info.Size()
-		if err := chunkFile(path, enc, chunkSize); err != nil {
+		if err := sendChunks(path, enc, chunkSize); err != nil {
 			return err
 		}
 	}
@@ -245,12 +266,12 @@ func sendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Enc
 }
 
 func recvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {
-	var nrBlocks int
-	err := dec.Decode(&nrBlocks)
+	var hdr FileListHdr
+	err := dec.Decode(&hdr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to recv src file list header: %w", err)
 	}
-	list := make([]ReceiverSrcFile, nrBlocks)
+	list := make([]ReceiverSrcFile, hdr.NumFiles)
 	for i := range list {
 		err := dec.Decode(&list[i].SrcFile)
 		if err != nil {
