@@ -114,3 +114,42 @@ func TestSendDstFileList(t *testing.T) {
 		t.Errorf("sendDstFileList(...) mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestRecvSrcFileList(t *testing.T) {
+	const nrFiles = 2
+	hdr := &FileListHdr{
+		NumFiles: nrFiles,
+		Type:     SenderFileList,
+	}
+	in := []interface{}{
+		hdr,
+		&SrcFile{
+			Path: "path/to/file1.bin",
+			Uid:  1000,
+			Gid:  1003,
+			Mode: 0644,
+			Size: 233348971,
+		},
+		&SrcFile{
+			Path: "path/to/subdir/uboot.dtb",
+			Uid:  500,
+			Gid:  500,
+			Mode: 0600,
+			Size: 4329918,
+		},
+	}
+	dec := createFakeDecoder(in...)
+	list, err := recvSrcFileList(dec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []interface{}
+	got = append(got, hdr)
+	for i := range list {
+		s := list[i]
+		got = append(got, &s.SrcFile)
+	}
+	if diff := cmp.Diff(in, got); diff != "" {
+		t.Errorf("recvSrcFileList(...) mismatch (-want +got):\n%s", diff)
+	}
+}

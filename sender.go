@@ -359,6 +359,9 @@ func recvDstFileList(dec Decoder, list []SenderSrcFile) error {
 	if err != nil {
 		return fmt.Errorf("failed to recv dst header: %w", err)
 	}
+	if hdr.Type != ReceiverFileList {
+		return fmt.Errorf("sender: invalid header type: %v", hdr.Type)
+	}
 	for i := 0; i < hdr.NumFiles; i++ {
 		err := dec.Decode(&list[i].dst.DstFile)
 		if err != nil {

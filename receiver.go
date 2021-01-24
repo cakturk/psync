@@ -271,6 +271,9 @@ func recvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to recv src file list header: %w", err)
 	}
+	if hdr.Type != SenderFileList {
+		return nil, fmt.Errorf("receiver: invalid header type: %v", hdr.Type)
+	}
 	list := make([]ReceiverSrcFile, hdr.NumFiles)
 	for i := range list {
 		err := dec.Decode(&list[i].SrcFile)
