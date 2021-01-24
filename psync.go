@@ -10,6 +10,8 @@ import (
 	"github.com/chmduquesne/rollinghash/adler32"
 )
 
+//go:generate stringer -type=FileType,FileListType,DstFileType,BlockType -output types_string.go
+
 type Encoder interface {
 	Encode(e interface{}) error
 	Write(p []byte) (n int, err error)
@@ -36,7 +38,7 @@ type FileDesc struct {
 type FileListType byte
 
 const (
-	InvalidFileListType = iota
+	InvalidFileListType FileListType = iota
 	SenderFileList
 	ReceiverFileList
 )
@@ -53,19 +55,6 @@ const (
 	LocalBlockType
 	FileSum
 )
-
-func (c BlockType) String() string {
-	switch c {
-	case RemoteBlockType:
-		return "RemoteBlockType"
-	case LocalBlockType:
-		return "LocalBlockType"
-	case FileSum:
-		return "FileSum"
-	default:
-		return "Unknown block type"
-	}
-}
 
 type RemoteBlock struct {
 	ChunkID  int
@@ -95,7 +84,7 @@ type SrcFile struct {
 type DstFileType int
 
 const (
-	DstFileSimilar = iota
+	DstFileSimilar DstFileType = iota
 	DstFileIdentical
 	DstFileNotExist
 )

@@ -29,10 +29,11 @@ func (fs *fileStat) Name() string       { return fs.name }
 func (fs *fileStat) IsDir() bool        { return fs.Mode().IsDir() }
 
 func TestSendDstFileList(t *testing.T) {
+	digest := func(s string) []byte { return digest(t, s) }
 	in := []ReceiverSrcFile{
 		{
 			SrcFile: SrcFile{
-				Path:  "path/to/foo.txt",
+				Path:  "path/to/identical.txt",
 				Size:  0,
 				Mtime: time.Time{},
 			},
@@ -62,7 +63,7 @@ func TestSendDstFileList(t *testing.T) {
 		fs  fileStat
 		err error
 	}{
-		"rootdir/path/to/foo.txt": {
+		"rootdir/path/to/identical.txt": {
 			fileStat{
 				size:    0,
 				modTime: time.Time{},
@@ -90,30 +91,26 @@ func TestSendDstFileList(t *testing.T) {
 		return doChunkFile(r, enc, blockSize)
 	}
 	defer func() { sendChunks = chunkFile }()
-
+	want := mergeDscEnc{
+		&FileListHdr{NumFiles: 3, Type: ReceiverFileList},
+		DstFile{Type: DstFileIdentical},
+		DstFile{ID: 1, Type: DstFileNotExist},
+		DstFile{ID: 2, ChunkSize: 8, Size: 57},
+		BlockSum{Rsum: 0x071c019d, Csum: digest("2e9ec317e197819358fbc43afca7d837")},
+		BlockSum{Rsum: 0x0a3a0291, Csum: digest("0971ea36560f190d33257a3722f2b08c")},
+		BlockSum{Rsum: 0x0c1402ea, Csum: digest("6f1adba1b07b8042ab76144a2bc98f86")},
+		BlockSum{Rsum: 0x0fb00385, Csum: digest("a70900006e6c6e510d501865a9f65efd")},
+		BlockSum{Rsum: 0x0fc20328, Csum: digest("aa7e6f7af8d9f4ce4bbe37c99645068a")},
+		BlockSum{Rsum: 0x0d790309, Csum: digest("7f75672f0f60125b9d78fc51fd5c3614")},
+		BlockSum{Rsum: 0x0d090302, Csum: digest("008f7a640603fa380ae5fa52eddb1f9f")},
+		BlockSum{Rsum: 0x000b000b, Csum: digest("68b329da9893e34099c7d8ad5cb9c940")},
+	}
 	var enc mergeDscEnc
 	err := sendDstFileList("rootdir", 8, in, &enc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	diff := cmp.Diff("", enc)
-	// t.Errorf("%#v", enc)
-	t.Errorf("%s", diff)
-	// receiver_test.go|97|
-	// main.mergeDscEnc{(*main.FileListHdr)(0xc000018470),
-	// main.DstFile{ID:0, ChunkSize:0, Size:0, Type:1}, main.DstFile{ID:1,
-	// ChunkSize:0, Size:0, Type:2}, main.DstFile{ID:2, ChunkSize:8,
-	// Size:57, Type:0}, main.BlockSum{Rsum:0x71c019d, Csum:[]uint8{0x2e,
-	// 0x9e, 0xc3, 0x17, 0xe1, 0x97, 0x81, 0x93, 0x58, 0xfb, 0xc4, 0x3a,
-	// 0xfc, 0xa7, 0xd8, 0x37}}, main.BlockSum{Rsum:0xa3a0291,
-	// Csum:[]uint8{0x9, 0x71, 0xea, 0x36, 0x56, 0xf, 0x19, 0xd, 0x33,
-	// 0x25, 0x7a, 0x37, 0x22, 0xf2, 0xb0, 0x8c}},
-	// main.BlockSum{Rsum:0xc1402ea, Csum:[]uint8{0x6f, 0x1a, 0xdb, 0xa1,
-	// 0xb0, 0x7b, 0x80, 0x42, 0xab, 0x76, 0x14, 0x4a, 0x2b, 0xc9, 0x8f,
-	// 0x86}}, main.BlockSum{Rsum:0xfb00385, Csum:[]uint8{0xa7, 0x9, 0x0,
-	// 0x0, 0x6e, 0x6c, 0x6e, 0x51, 0xd, 0x50, 0x18, 0x65, 0xa9, 0xf6,
-	// 0x5e, 0xfd}}, main.BlockSum{Rsum:0xfc20328, Csum:[]uint8{0xaa, 0x7e,
-	// 0x6f, 0x7a, 0xf8, 0xd9, 0xf4, 0xce, 0x4b, 0xbe, 0x37, 0xc9, 0x96,
-	// 0x45, 0x6, 0x8a}}, main.BlockSum{Rsum:0xd790309, Csum:[]uint8{0x7f,
-	// 0x75, 0x67, 0x2f, 0xf, 0x60, 0x12, 0x5b, 0x9d, 0x78, 0xfc
+	if diff := cmp.Diff(want, enc); diff != "" {
+		t.Errorf("sendDstFileList(...) mismatch (-want +got):\n%s", diff)
+	}
 }
