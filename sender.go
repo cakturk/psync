@@ -39,7 +39,7 @@ type SenderDstFile struct {
 }
 
 type Sender struct {
-	enc      Encoder
+	enc      EncodeWriter
 	root     string
 	srcFiles []SenderSrcFile
 }
@@ -61,7 +61,7 @@ func (s *Sender) sendBlockDescs(id int, e *SenderSrcFile) error {
 //         |       0     1
 // TODO: calc merge offsets, coalesce concecutive blocks into single
 // merge descriptor.
-func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc Encoder) error {
+func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc EncodeWriter) error {
 	if e.dst.Type == DstFileIdentical {
 		return nil
 	}
@@ -177,7 +177,7 @@ Outer:
 }
 
 type blockEncoder struct {
-	enc        Encoder
+	enc        EncodeWriter
 	r          *Bring
 	bsize, off int64
 
@@ -353,7 +353,7 @@ func SendSrcFileList(enc Encoder, list []SenderSrcFile) error {
 	return nil
 }
 
-func recvDstFileList(dec Decoder, list []SenderSrcFile) error {
+func RecvDstFileList(dec Decoder, list []SenderSrcFile) error {
 	var hdr FileListHdr
 	err := dec.Decode(&hdr)
 	if err != nil {

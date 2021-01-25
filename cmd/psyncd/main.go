@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"flag"
 	"fmt"
 	"log"
@@ -35,12 +36,12 @@ func main() {
 	if err != nil {
 		die(1, "failed to listen: %v", err)
 	}
-	if err := run(ls); err != nil {
+	if err := run(ls, flag.Arg(0)); err != nil {
 		die(1, "%v", err)
 	}
 }
 
-func run(l net.Listener) error {
+func run(l net.Listener, root string) error {
 	defer l.Close()
 	for {
 		c, err := l.Accept()
@@ -65,6 +66,16 @@ func run(l net.Listener) error {
 			log.Print("protocol version mismatch")
 			c.Close()
 			continue
+		}
+		dec := gob.NewDecoder(c)
+		rs, err := psync.RecvSrcFileList(dec)
+		if err != nil {
+			return err
+		}
+		enc := gob.NewEncoder(c)
+		err = psync.SendDstFileList(root, 512, rs, enc)
+		if err != nil {
+			return err
 		}
 	}
 }

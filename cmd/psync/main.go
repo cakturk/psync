@@ -1,9 +1,9 @@
 package main
 
 import (
+	"encoding/gob"
 	"flag"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"time"
@@ -40,17 +40,18 @@ func main() {
 	}
 }
 
-func run(rw io.ReadWriter, root string) error {
-	// handshake
-	// generate file list
-	// send file list
-	// create sender
-	// receive receiver file list
-	// send block descriptors
-	// ? receive some kind of exit code, which indicates wheter
-	// the receiver was successful or not.
+// handshake
+// generate file list
+// send file list
+// create sender
+// receive receiver file list
+// send block descriptors
+// ? receive some kind of exit code, which indicates wheter
+// the receiver was successful or not.
+func run(conn net.Conn, root string) error {
+	defer conn.Close()
 	hs := psync.NewHandshake(1, psync.WireFormatGob, 0)
-	_, err := hs.WriteTo(rw)
+	_, err := hs.WriteTo(conn)
 	if err != nil {
 		return err
 	}
@@ -58,12 +59,20 @@ func run(rw io.ReadWriter, root string) error {
 	if err != nil {
 		return err
 	}
-	// enc := gob.NewEncoder(rw)
-	err = psync.SendSrcFileList(nil, s)
+	enc := gob.NewEncoder(conn)
+	err = psync.SendSrcFileList(enc, s)
 	if err != nil {
 		return err
 	}
-	fmt.Println(s)
+	dec := gob.NewDecoder(conn)
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	err = psync.RecvDstFileList(dec, s)
+	if err != nil {
+		return err
+	}
+	for _, v := range s {
+		fmt.Printf("%#v\n", v)
+	}
 	return nil
 }
 
