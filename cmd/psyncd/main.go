@@ -35,10 +35,17 @@ func main() {
 	if err != nil {
 		die(1, "failed to listen: %v", err)
 	}
+	if err := run(ls); err != nil {
+		die(1, "%v", err)
+	}
+}
+
+func run(l net.Listener) error {
+	defer l.Close()
 	for {
-		c, err := ls.Accept()
+		c, err := l.Accept()
 		if err != nil {
-			die(2, "failed to accept: %v", err)
+			return fmt.Errorf("failed to accept: %v", err)
 		}
 		c.SetReadDeadline(time.Now().Add(handshakeReadDeadline))
 		h, err := psync.ReadHandshake(c)
@@ -47,7 +54,7 @@ func main() {
 			if os.IsTimeout(err) {
 				continue
 			}
-			die(2, "failed to handshake: %v", err)
+			return fmt.Errorf("failed to handshake: %v", err)
 		}
 		if !h.Valid() {
 			log.Print("invalid protocol header")
