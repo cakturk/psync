@@ -28,7 +28,7 @@ func TestSendSrcFileList(t *testing.T) {
 		},
 	}
 	var enc mergeDscEnc
-	err := sendSrcFileList(&enc, in)
+	err := SendSrcFileList(&enc, in)
 	if err != nil {
 		t.Fatal(err)
 	}

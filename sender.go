@@ -300,7 +300,7 @@ func (d *blockEncoder) flush() error {
 	return err
 }
 
-func genSrcFileList(root string) ([]SenderSrcFile, error) {
+func GenSrcFileList(root string) ([]SenderSrcFile, error) {
 	var list []SenderSrcFile
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -335,7 +335,7 @@ func genSrcFileList(root string) ([]SenderSrcFile, error) {
 // - and then read the same number of target files from the receiver side
 // - remember, each target file contains (*DstFile).NumChunks() number of
 //   blocks after it.
-func sendSrcFileList(enc Encoder, list []SenderSrcFile) error {
+func SendSrcFileList(enc Encoder, list []SenderSrcFile) error {
 	hdr := FileListHdr{
 		NumFiles: len(list),
 		Type:     SenderFileList,
