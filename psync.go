@@ -14,12 +14,20 @@ import (
 
 type Encoder interface {
 	Encode(e interface{}) error
-	Write(p []byte) (n int, err error)
+}
+
+type EncodeWriter interface {
+	Encoder
+	io.Writer
 }
 
 type Decoder interface {
-	Read(p []byte) (n int, err error)
 	Decode(e interface{}) error
+}
+
+type DecodeReader interface {
+	Decoder
+	io.Reader
 }
 
 var ProtoMagic = [...]byte{'p', 's', 'y', 'n'}

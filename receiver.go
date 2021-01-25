@@ -24,7 +24,7 @@ type ReceiverSrcFile struct {
 type Receiver struct {
 	root     string
 	srcFiles []ReceiverSrcFile
-	dec      Decoder
+	dec      DecodeReader
 }
 
 func (r *Receiver) buildFile() error {
@@ -215,7 +215,7 @@ var (
 	sendChunks = chunkFile
 )
 
-func sendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) error {
+func SendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) error {
 	hdr := FileListHdr{
 		NumFiles: len(list),
 		Type:     ReceiverFileList,
@@ -265,7 +265,7 @@ func sendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Enc
 	return nil
 }
 
-func recvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {
+func RecvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {
 	var hdr FileListHdr
 	err := dec.Decode(&hdr)
 	if err != nil {

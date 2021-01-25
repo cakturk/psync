@@ -106,7 +106,7 @@ func TestSendDstFileList(t *testing.T) {
 		BlockSum{Rsum: 0x000b000b, Csum: digest("68b329da9893e34099c7d8ad5cb9c940")},
 	}
 	var enc mergeDscEnc
-	err := sendDstFileList("rootdir", 8, in, &enc)
+	err := SendDstFileList("rootdir", 8, in, &enc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestRecvSrcFileList(t *testing.T) {
 		},
 	}
 	dec := createFakeDecoder(in...)
-	list, err := recvSrcFileList(dec)
+	list, err := RecvSrcFileList(dec)
 	if err != nil {
 		t.Fatal(err)
 	}

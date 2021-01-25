@@ -342,7 +342,7 @@ func TestDescEnc(t *testing.T) {
 	}
 }
 
-func createFakeDecoder(a ...interface{}) Decoder {
+func createFakeDecoder(a ...interface{}) DecodeReader {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
 	btype := RemoteBlockType
