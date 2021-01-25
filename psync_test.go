@@ -1,4 +1,4 @@
-package main
+package psync
 
 import (
 	"bufio"
@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	stdadler32 "hash/adler32"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -559,6 +560,22 @@ func TestHowMany(t *testing.T) {
 	r := hm(5, 3)
 	if r != 2 {
 		t.Errorf("r: %d", r)
+	}
+}
+
+func TestHandshake(t *testing.T) {
+	var b bytes.Buffer
+	want := NewHandshake(0x1a2b, WireFormatGob, CompressGzip)
+	_, err := want.WriteTo(&b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := ReadHandshake(&b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(&got, want) {
+		t.Fatalf("Handshake.WriteTo(...) = %#v, want %#v", got, want)
 	}
 }
 
