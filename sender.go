@@ -306,6 +306,9 @@ func GenSrcFileList(root string) ([]SenderSrcFile, error) {
 		if err != nil {
 			return err
 		}
+		if info.IsDir() {
+			return nil
+		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
@@ -320,7 +323,6 @@ func GenSrcFileList(root string) ([]SenderSrcFile, error) {
 				Mtime: info.ModTime(),
 			},
 		})
-		// fmt.Println(rel)
 		return nil
 	})
 	if err != nil {

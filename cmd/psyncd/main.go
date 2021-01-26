@@ -46,7 +46,7 @@ func run(l net.Listener, root string) error {
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			return fmt.Errorf("failed to accept: %v", err)
+			return fmt.Errorf("failed to accept: %w", err)
 		}
 		c.SetReadDeadline(time.Now().Add(handshakeReadDeadline))
 		h, err := psync.ReadHandshake(c)
@@ -55,7 +55,7 @@ func run(l net.Listener, root string) error {
 			if os.IsTimeout(err) {
 				continue
 			}
-			return fmt.Errorf("failed to handshake: %v", err)
+			return fmt.Errorf("failed to handshake: %w", err)
 		}
 		if !h.Valid() {
 			log.Print("invalid protocol header")
@@ -73,10 +73,11 @@ func run(l net.Listener, root string) error {
 			return err
 		}
 		enc := gob.NewEncoder(c)
-		err = psync.SendDstFileList(root, 512, rs, enc)
+		n, err := psync.SendDstFileList(root, 512, rs, enc)
 		if err != nil {
 			return err
 		}
+		log.Printf("%d file(s) seems to have changed", n)
 	}
 }
 

@@ -203,7 +203,6 @@ func doChunkFile(r io.Reader, enc Encoder, blkSize int) error {
 func chunkFile(path string, enc Encoder, blockSize int) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return err
 	}
 	defer f.Close()
 	return doChunkFile(f, enc, blockSize)
@@ -215,54 +214,59 @@ var (
 	sendChunks = chunkFile
 )
 
-func SendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) error {
+// TODO: Can we improve this function so that we don't need to send anything
+// back to the sender when there is no change in the directory tree?
+func SendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Encoder) (int, error) {
+	var nrChanged int
 	hdr := FileListHdr{
 		NumFiles: len(list),
 		Type:     ReceiverFileList,
 	}
 	err := enc.Encode(&hdr)
 	if err != nil {
-		return fmt.Errorf("sending dst list header failed: %w", err)
+		return 0, fmt.Errorf("sending dst list header failed: %w", err)
 	}
 	for i, v := range list {
 		path := filepath.Join(root, v.Path)
 		info, err := osStat(path)
 		if err != nil {
 			if os.IsNotExist(err) {
+				nrChanged++
 				if err := enc.Encode(DstFile{
 					ID:   i,
 					Type: DstFileNotExist,
 				}); err != nil {
-					return err
+					return nrChanged, err
 				}
 				continue
 			}
-			return err
+			return nrChanged, err
 		}
 		if info.ModTime() == v.Mtime && info.Size() == v.Size {
 			if err := enc.Encode(DstFile{
 				ID:   i,
 				Type: DstFileIdentical,
 			}); err != nil {
-				return err
+				return nrChanged, err
 			}
 			continue
 		}
+		nrChanged++
 		if err := enc.Encode(DstFile{
 			ID:        i,
 			ChunkSize: chunkSize,
 			Size:      info.Size(),
 			Type:      DstFileSimilar,
 		}); err != nil {
-			return err
+			return nrChanged, err
 		}
 		list[i].chunkSize = chunkSize
 		list[i].dstFileSize = info.Size()
 		if err := sendChunks(path, enc, chunkSize); err != nil {
-			return err
+			return nrChanged, err
 		}
 	}
-	return nil
+	return nrChanged, nil
 }
 
 func RecvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {
