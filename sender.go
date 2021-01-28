@@ -39,21 +39,36 @@ type SenderDstFile struct {
 }
 
 type Sender struct {
-	enc      EncodeWriter
-	root     string
-	srcFiles []SenderSrcFile
+	Enc   EncodeWriter
+	Root  string
+	Files []SenderSrcFile
 }
 
-func (s *Sender) sendBlockDescs(id int, e *SenderSrcFile) error {
+func (s *Sender) SendBlockDescList() error {
+	for i := range s.Files {
+		sf := &s.Files[i]
+		if sf.dst.Type != DstFileIdentical {
+			err := s.sendOneBlockDesc(i, sf)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// TODO: Is this id parameter really needed? Maybe we can get it from
+// the destination file struct.
+func (s *Sender) sendOneBlockDesc(id int, e *SenderSrcFile) error {
 	if e.Size == 0 {
 		return nil
 	}
-	f, err := os.Open(filepath.Join(s.root, e.Path))
+	f, err := os.Open(filepath.Join(s.Root, e.Path))
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	return sendBlockDescs(f, id, e, s.enc)
+	return sendBlockDescs(f, id, e, s.Enc)
 }
 
 //
@@ -355,39 +370,43 @@ func SendSrcFileList(enc Encoder, list []SenderSrcFile) error {
 	return nil
 }
 
-func RecvDstFileList(dec Decoder, list []SenderSrcFile) error {
+func RecvDstFileList(dec Decoder, list []SenderSrcFile) (int, error) {
+	var nrChanged int
 	var hdr FileListHdr
 	err := dec.Decode(&hdr)
 	if err != nil {
-		return fmt.Errorf("failed to recv dst header: %w", err)
+		return 0, fmt.Errorf("failed to recv dst header: %w", err)
 	}
 	if hdr.Type != ReceiverFileList {
-		return fmt.Errorf("sender: invalid header type: %v", hdr.Type)
+		return 0, fmt.Errorf("sender: invalid header type: %v", hdr.Type)
 	}
 	for i := 0; i < hdr.NumFiles; i++ {
 		err := dec.Decode(&list[i].dst.DstFile)
 		if err != nil {
-			return fmt.Errorf("failed to recv dst list: %w", err)
+			return nrChanged, fmt.Errorf("failed to recv dst list: %w", err)
 		}
 		// sanity check
 		if id := list[i].dst.ID; id != i {
-			return fmt.Errorf("dst file invalid ID got: %d, want: %d", id, i)
+			return nrChanged, fmt.Errorf("dst file invalid ID got: %d, want: %d", id, i)
 		}
 		dst := &list[i].dst
+		if dst.Type != DstFileIdentical {
+			nrChanged++
+		}
 		dst.sums = make(map[uint32]SenderBlockSum)
 		nrBlocks := dst.NumChunks()
 		for j := 0; j < nrBlocks; j++ {
 			var bs SenderBlockSum
 			err := dec.Decode(&bs.BlockSum)
 			if err != nil {
-				return fmt.Errorf("recving block sum failed: %w", err)
+				return nrChanged, fmt.Errorf("recving block sum failed: %w", err)
 			}
 			bs.id = j
 			if _, ok := dst.sums[bs.Rsum]; ok {
-				return errors.New("duplicate block received")
+				return nrChanged, errors.New("duplicate block received")
 			}
 			dst.sums[bs.Rsum] = bs
 		}
 	}
-	return nil
+	return nrChanged, nil
 }

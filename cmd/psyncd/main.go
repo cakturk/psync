@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -77,11 +78,32 @@ func run(l net.Listener, root string) error {
 		if err != nil {
 			return err
 		}
+		if n == 0 {
+			log.Println("nothing has been changed")
+			continue
+		}
 		log.Printf("%d file(s) seems to have changed", n)
+		recver := psync.Receiver{
+			Root:     root,
+			SrcFiles: rs,
+			Dec: decReader{
+				Reader:  c,
+				Decoder: dec,
+			},
+		}
+		err = recver.BuildFiles(n)
+		if err != nil {
+			return err
+		}
 	}
 }
 
 func die(code int, format string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, "psyncd: "+format+"\n", a...)
 	os.Exit(code)
+}
+
+type decReader struct {
+	io.Reader
+	psync.Decoder
 }

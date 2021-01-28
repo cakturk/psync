@@ -390,8 +390,8 @@ func TestBuilder(t *testing.T) {
 	}{
 		{
 			rcv: Receiver{
-				root: "",
-				srcFiles: []ReceiverSrcFile{
+				Root: "",
+				SrcFiles: []ReceiverSrcFile{
 					{
 						SrcFile: SrcFile{
 							Path:  "",
@@ -402,7 +402,7 @@ func TestBuilder(t *testing.T) {
 						chunkSize: 8,
 					},
 				},
-				dec: createFakeDecoder(
+				Dec: createFakeDecoder(
 					LocalBlockType,
 					LocalBlock{
 						Size: 10,
@@ -441,8 +441,8 @@ func TestBuilder(t *testing.T) {
 		},
 		{
 			rcv: Receiver{
-				root: "",
-				srcFiles: []ReceiverSrcFile{
+				Root: "",
+				SrcFiles: []ReceiverSrcFile{
 					{
 						SrcFile: SrcFile{
 							Path:  "",
@@ -453,7 +453,7 @@ func TestBuilder(t *testing.T) {
 						chunkSize: 8,
 					},
 				},
-				dec: createFakeDecoder(
+				Dec: createFakeDecoder(
 					RemoteBlockType,
 					RemoteBlock{
 						ChunkID:  5,
@@ -486,8 +486,8 @@ func TestBuilder(t *testing.T) {
 		},
 		{
 			rcv: Receiver{
-				root: "",
-				srcFiles: []ReceiverSrcFile{
+				Root: "",
+				SrcFiles: []ReceiverSrcFile{
 					{
 						SrcFile: SrcFile{
 							Path:  "",
@@ -498,7 +498,7 @@ func TestBuilder(t *testing.T) {
 						chunkSize: 8,
 					},
 				},
-				dec: createFakeDecoder(
+				Dec: createFakeDecoder(
 					LocalBlockType,
 					LocalBlock{
 						Size: 3,
@@ -526,7 +526,7 @@ func TestBuilder(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var b bytes.Buffer
-		err := tt.rcv.merge(&tt.rcv.srcFiles[0], strings.NewReader(orig), &b)
+		err := tt.rcv.merge(&tt.rcv.SrcFiles[0], strings.NewReader(orig), &b)
 		if err != nil {
 			t.Error(err)
 		}
