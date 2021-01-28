@@ -98,7 +98,7 @@ func TestRecvDstFileList(t *testing.T) {
 	}
 	dec := createFakeDecoder(in...)
 	list := make([]SenderSrcFile, nrFiles)
-	err := RecvDstFileList(dec, list)
+	_, err := RecvDstFileList(dec, list)
 	if err != nil {
 		t.Fatal(err)
 	}

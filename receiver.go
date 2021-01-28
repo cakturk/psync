@@ -22,22 +22,32 @@ type ReceiverSrcFile struct {
 }
 
 type Receiver struct {
-	root     string
-	srcFiles []ReceiverSrcFile
-	dec      DecodeReader
+	Root     string
+	SrcFiles []ReceiverSrcFile
+	Dec      DecodeReader
+}
+
+func (r *Receiver) BuildFiles(nrChangedFiles int) error {
+	for i := 0; i < nrChangedFiles; i++ {
+		err := r.buildFile()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Receiver) buildFile() error {
 	var fd FileDesc
-	if err := r.dec.Decode(&fd); err != nil {
+	if err := r.Dec.Decode(&fd); err != nil {
 		return err
 	}
-	if fd.ID < 0 && fd.ID > len(r.srcFiles) {
+	if fd.ID < 0 && fd.ID > len(r.SrcFiles) {
 		return fmt.Errorf("there is no such file with id: %d", fd.ID)
 	}
 	// handle new file scenario do io.Copy or something like that
 	if fd.Typ == NewFile {
-		return r.create(&r.srcFiles[fd.ID])
+		return r.create(&r.SrcFiles[fd.ID])
 	}
 	if fd.Typ != PartialFile {
 		return fmt.Errorf("unrecognized file descriptor type: %v", fd.Typ)
@@ -48,8 +58,8 @@ func (r *Receiver) buildFile() error {
 	}
 	defer tmp.Close()
 	defer os.Remove(tmp.Name())
-	s := &r.srcFiles[fd.ID]
-	f, err := os.Open(filepath.Join(r.root, s.Path))
+	s := &r.SrcFiles[fd.ID]
+	f, err := os.Open(filepath.Join(r.Root, s.Path))
 	if err != nil {
 		return err
 	}
@@ -69,7 +79,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 	var off int64
 	for off < s.Size {
 		var typ BlockType
-		if err := r.dec.Decode(&typ); err != nil {
+		if err := r.Dec.Decode(&typ); err != nil {
 			if err == io.EOF {
 				break
 			}
@@ -78,20 +88,20 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		switch typ {
 		case LocalBlockType:
 			var lb LocalBlock
-			if err := r.dec.Decode(&lb); err != nil {
+			if err := r.Dec.Decode(&lb); err != nil {
 				return err
 			}
 			if off != lb.Off {
 				return fmt.Errorf("local bad file offset: want %d, got: %d", lb.Off, off)
 			}
-			n, err := io.CopyN(tmp, r.dec, lb.Size)
+			n, err := io.CopyN(tmp, r.Dec, lb.Size)
 			off += n
 			if err != nil {
 				return err
 			}
 		case RemoteBlockType:
 			var rb RemoteBlock
-			if err := r.dec.Decode(&rb); err != nil {
+			if err := r.Dec.Decode(&rb); err != nil {
 				return err
 			}
 			// XXX: rb.Off is not a remote file offset. Instead it
@@ -137,13 +147,13 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		typ     BlockType
 		fileSum []byte
 	)
-	if err := r.dec.Decode(&typ); err != nil {
+	if err := r.Dec.Decode(&typ); err != nil {
 		return err
 	}
 	if typ != FileSum {
 		return fmt.Errorf("unexpected block type: %v", typ)
 	}
-	if err := r.dec.Decode(&fileSum); err != nil {
+	if err := r.Dec.Decode(&fileSum); err != nil {
 		log.Printf("sum: %v", fileSum)
 		return err
 	}
@@ -154,13 +164,13 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 }
 
 func (r *Receiver) create(s *ReceiverSrcFile) error {
-	name := filepath.Join(r.root, s.Path)
+	name := filepath.Join(r.Root, s.Path)
 	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, s.Mode)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	n, err := io.Copy(f, r.dec)
+	n, err := io.Copy(f, r.Dec)
 	if err != nil {
 		return err
 	}

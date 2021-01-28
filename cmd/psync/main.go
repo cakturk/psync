@@ -4,6 +4,8 @@ import (
 	"encoding/gob"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
 	"time"
@@ -66,12 +68,29 @@ func run(conn net.Conn, root string) error {
 	}
 	dec := gob.NewDecoder(conn)
 	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	err = psync.RecvDstFileList(dec, s)
+	n, err := psync.RecvDstFileList(dec, s)
 	if err != nil {
 		return err
 	}
-	for _, v := range s {
-		fmt.Printf("%#v\n", v)
+	if n == 0 {
+		log.Println("nothing has been changed")
+		return nil
+	}
+	log.Printf("%d file(s) seems to have changed", n)
+	// for _, v := range s {
+	// 	fmt.Printf("%#v\n", v)
+	// }
+	sender := psync.Sender{
+		Enc: encWriter{
+			Writer:  conn,
+			Encoder: enc,
+		},
+		Root:  root,
+		Files: s,
+	}
+	err = sender.SendBlockDescList()
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -79,4 +98,9 @@ func run(conn net.Conn, root string) error {
 func die(code int, format string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, "psync: "+format+"\n", a...)
 	os.Exit(code)
+}
+
+type encWriter struct {
+	io.Writer
+	psync.Encoder
 }
