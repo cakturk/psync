@@ -3,7 +3,7 @@ package psync
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	stdadler32 "hash/adler32"
 	"io"
@@ -75,7 +75,8 @@ func (r *Receiver) buildFile() error {
 
 func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) error {
 	sum := md5.New()
-	tmp = io.MultiWriter(tmp, sum)
+	var b bytes.Buffer
+	tmp = io.MultiWriter(tmp, sum, &b)
 	var off int64
 	for off < s.Size {
 		var typ BlockType
@@ -158,7 +159,20 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		return err
 	}
 	if csum := sum.Sum(nil); !bytes.Equal(csum, fileSum) {
-		return errors.New("checksum of file does not match the original")
+		f, err := os.Create("/tmp/pp.log")
+		if err != nil {
+			panic(err)
+		}
+		got := hex.EncodeToString(csum)
+		want := hex.EncodeToString(fileSum)
+		_, err = io.Copy(f, &b)
+		if err != nil {
+			panic(err)
+		}
+		return fmt.Errorf(
+			"checksum of file does not match the original: got: %q want %q",
+			got, want,
+		)
 	}
 	return nil
 }

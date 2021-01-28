@@ -3,7 +3,6 @@ package psync
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -124,6 +123,13 @@ Outer:
 			mh.Reset()
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Csum) {
+				if cr.HeadLen() > 0 {
+					err = ben.sendLocalBlock()
+					if err != nil {
+						log.Printf("yeni: %d", cr.HeadLen())
+						return err
+					}
+				}
 				ben.sendRemoteBlock(ch.id)
 				continue
 			}
@@ -403,7 +409,10 @@ func RecvDstFileList(dec Decoder, list []SenderSrcFile) (int, error) {
 			}
 			bs.id = j
 			if _, ok := dst.sums[bs.Rsum]; ok {
-				return nrChanged, errors.New("duplicate block received")
+				// new := hex.EncodeToString(bs.Csum)
+				// old := hex.EncodeToString(dst.sums[bs.Rsum].Csum)
+				// return nrChanged, fmt.Errorf("duplicate block received: old: %q new: %q", old, new)
+				continue
 			}
 			dst.sums[bs.Rsum] = bs
 		}
