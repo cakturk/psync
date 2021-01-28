@@ -74,7 +74,7 @@ func run(l net.Listener, root string) error {
 			return err
 		}
 		enc := gob.NewEncoder(c)
-		n, err := psync.SendDstFileList(root, 512, rs, enc)
+		n, err := psync.SendDstFileList(root, 8, rs, enc)
 		if err != nil {
 			return err
 		}
