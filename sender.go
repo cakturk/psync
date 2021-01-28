@@ -124,9 +124,10 @@ Outer:
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Csum) {
 				if cr.HeadLen() > 0 {
+					log.Printf("yeni: %q", cr.HeadPeek())
 					err = ben.sendLocalBlock()
 					if err != nil {
-						log.Printf("yeni: %d", cr.HeadLen())
+						log.Printf("yeni hata: %q", cr.HeadLen())
 						return err
 					}
 				}
@@ -163,9 +164,11 @@ Outer:
 					}
 				}
 				ben.sendRemoteBlock(ch.id)
+				fmt.Println("continue Outer")
 				continue Outer
 			}
 		}
+		log.Printf("head alt0: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 		err = ben.sendLocalBlock()
 		// enc.Encode(Blob)
 		// log.Printf(
@@ -173,7 +176,7 @@ Outer:
 		// 	cr.HeadLen(), cr.buf.Bytes()[:cr.buf.Len()-cr.blockSize],
 		// 	cr.buf.Bytes()[cr.buf.Len()-cr.blockSize:],
 		// )
-		log.Printf("head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
+		log.Printf("head alt1: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 		// log.Printf("headlenPost: %d, %q, written: %d", cr.HeadLen(), cr.buf.Bytes()[:cr.buf.Len()], n)
 		if err != nil {
 			log.Printf("5 break: %d", cr.HeadLen())
