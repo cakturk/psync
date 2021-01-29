@@ -84,7 +84,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			if err == io.EOF {
 				break
 			}
-			return err
+			return fmt.Errorf("failed to decode BlockType (%d/%d): %w", off, s.Size, err)
 		}
 		switch typ {
 		case LocalBlockType:
@@ -149,7 +149,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		fileSum []byte
 	)
 	if err := r.Dec.Decode(&typ); err != nil {
-		return err
+		return fmt.Errorf("failed to decode FileSum: %w", err)
 	}
 	if typ != FileSum {
 		return fmt.Errorf("unexpected block type: %v", typ)
