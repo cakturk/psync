@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/gob"
 	"flag"
 	"fmt"
@@ -68,7 +69,8 @@ func run(l net.Listener, root string) error {
 			c.Close()
 			continue
 		}
-		dec := gob.NewDecoder(c)
+		br := bufio.NewReader(c)
+		dec := gob.NewDecoder(br)
 		rs, err := psync.RecvSrcFileList(dec)
 		if err != nil {
 			return err
@@ -87,7 +89,7 @@ func run(l net.Listener, root string) error {
 			Root:     root,
 			SrcFiles: rs,
 			Dec: decReader{
-				Reader:  c,
+				Reader:  br,
 				Decoder: dec,
 			},
 		}
