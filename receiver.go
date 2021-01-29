@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 type ReceiverSrcFile struct {
@@ -74,9 +75,12 @@ func (r *Receiver) buildFile() error {
 }
 
 func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) error {
+	fb, err := os.Create("/tmp/pp.log")
+	if err != nil {
+		panic(err)
+	}
 	sum := md5.New()
-	var b bytes.Buffer
-	tmp = io.MultiWriter(tmp, sum, &b)
+	tmp = io.MultiWriter(tmp, sum, fb)
 	var off int64
 	for off < s.Size {
 		var typ BlockType
@@ -84,25 +88,31 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			if err == io.EOF {
 				break
 			}
+			runtime.Breakpoint()
 			return fmt.Errorf("failed to decode BlockType (%d/%d): %w", off, s.Size, err)
 		}
 		switch typ {
 		case LocalBlockType:
 			var lb LocalBlock
+			var b bytes.Buffer
 			if err := r.Dec.Decode(&lb); err != nil {
+				runtime.Breakpoint()
 				return err
 			}
 			if off != lb.Off {
 				return fmt.Errorf("local bad file offset: want %d, got: %d", lb.Off, off)
 			}
-			n, err := io.CopyN(tmp, r.Dec, lb.Size)
+			n, err := io.CopyN(io.MultiWriter(tmp, &b), r.Dec, lb.Size)
+			log.Printf("localblock: %+v n: %d, off: %d, data: %q", lb, n, off, b.Bytes())
 			off += n
 			if err != nil {
 				return err
 			}
 		case RemoteBlockType:
 			var rb RemoteBlock
+			var b bytes.Buffer
 			if err := r.Dec.Decode(&rb); err != nil {
+				runtime.Breakpoint()
 				return err
 			}
 			// XXX: rb.Off is not a remote file offset. Instead it
@@ -119,13 +129,14 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 				return fmt.Errorf("remote bad file offset: want %d, got: %d", rb.Off, off)
 			}
 			n, err := io.Copy(
-				tmp,
+				io.MultiWriter(tmp, &b),
 				io.NewSectionReader(
 					rd,
 					int64(rb.ChunkID*s.chunkSize),
 					int64(rb.NrChunks*s.chunkSize),
 				),
 			)
+			log.Printf("remoteblock: %+v n: %d, off: %d, data: %q", rb, n, off, b.Bytes())
 			off += n
 			if err != nil {
 				// last block may be smaller than the others. So check
@@ -159,16 +170,8 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		return err
 	}
 	if csum := sum.Sum(nil); !bytes.Equal(csum, fileSum) {
-		f, err := os.Create("/tmp/pp.log")
-		if err != nil {
-			panic(err)
-		}
 		got := hex.EncodeToString(csum)
 		want := hex.EncodeToString(fileSum)
-		_, err = io.Copy(f, &b)
-		if err != nil {
-			panic(err)
-		}
 		return fmt.Errorf(
 			"checksum of file does not match the original: got: %q want %q",
 			got, want,

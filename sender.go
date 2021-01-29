@@ -106,6 +106,7 @@ Outer:
 		// fill in the buffer
 		rh.Reset()
 		n, err = io.CopyN(rh, &cr, chunkSize)
+		log.Printf("yukari: %d, %v", n, err)
 		if err != nil {
 			if err != io.EOF {
 				log.Printf("0 break: %d", cr.HeadLen())
@@ -116,38 +117,33 @@ Outer:
 				break
 			}
 		}
-		log.Printf("head0: %q, tail: %q, adler: %x", cr.HeadPeek(), cr.TailPeek(), rh.Sum32())
 		ch, ok := e.dst.sums[rh.Sum32()]
 		if ok {
-			log.Println("wow I feel good!")
 			mh.Reset()
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Csum) {
+				log.Printf("blocks matched0: h: %q, t: %q", cr.HeadPeek(), cr.TailPeek())
 				if cr.HeadLen() > 0 {
-					log.Printf("yeni: %q", cr.HeadPeek())
 					err = ben.sendLocalBlock()
 					if err != nil {
-						log.Printf("yeni hata: %q", cr.HeadLen())
+						log.Printf("sendLocalBlock err0: %q", cr.HeadLen())
 						return err
 					}
 				}
 				ben.sendRemoteBlock(ch.id)
 				continue
 			}
-			log.Println("but not sooo good")
 		}
 		for i := int64(0); i < chunkSize; i++ {
 			c, err := cr.ReadByte()
 			if err != nil {
 				if err == io.EOF {
-					log.Printf("2 break: %d", cr.HeadLen())
+					log.Printf("ReadByte reached EOF: %q", cr.HeadPeek())
 					break Outer
 				}
-				log.Printf("3 break: %d", cr.HeadLen())
-				return err
+				return fmt.Errorf("ReadByte: %w", err)
 			}
 			rh.Roll(c)
-			log.Printf("%q, adler: 0x%x", c, rh.Sum32())
 			ch, ok = e.dst.sums[rh.Sum32()]
 			if !ok {
 				continue
@@ -156,10 +152,11 @@ Outer:
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Csum) {
 				// block matched, send head bytes at first
-				if i > 0 {
+				log.Printf("blocks matched1: i: %d, h: %q, t: %q, ", i, cr.HeadPeek(), cr.TailPeek())
+				if cr.HeadLen() > 0 {
 					err = ben.sendLocalBlock()
 					if err != nil {
-						log.Printf("4 break: %d", cr.HeadLen())
+						log.Printf("sendLocalBlock err1: %q", cr.HeadLen())
 						return err
 					}
 				}
@@ -170,25 +167,18 @@ Outer:
 		}
 		log.Printf("head alt0: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 		err = ben.sendLocalBlock()
-		// enc.Encode(Blob)
-		// log.Printf(
-		// 	"headlen: %d, head: %q, tail: %q",
-		// 	cr.HeadLen(), cr.buf.Bytes()[:cr.buf.Len()-cr.blockSize],
-		// 	cr.buf.Bytes()[cr.buf.Len()-cr.blockSize:],
-		// )
-		log.Printf("head alt1: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
-		// log.Printf("headlenPost: %d, %q, written: %d", cr.HeadLen(), cr.buf.Bytes()[:cr.buf.Len()], n)
 		if err != nil {
-			log.Printf("5 break: %d", cr.HeadLen())
+			log.Printf("sendLocalBlock err2: %q", cr.HeadLen())
 			return err
 		}
-	}
-	err = ben.flush()
-	if err != nil {
-		log.Printf("6 break: %d", cr.HeadLen())
-		return err
+		log.Printf("head alt1: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 	}
 	log.Printf("prologue point: head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
+	err = ben.flush()
+	if err != nil {
+		log.Printf("flush: %d", cr.HeadLen())
+		return err
+	}
 	err = enc.Encode(FileSum)
 	if err != nil {
 		return err
@@ -235,14 +225,20 @@ func (d *blockEncoder) sendLocalBlock() error {
 	if err != nil {
 		return err
 	}
+	hlen := d.r.HeadLen()
 	err = d.enc.Encode(LocalBlock{
-		Size: d.r.HeadLen(),
+		Size: hlen,
 		Off:  d.off,
 	})
 	if err != nil {
 		return err
 	}
-	n, err := io.Copy(d.enc, d.r.Head())
+	var b bytes.Buffer
+	n, err := io.Copy(d.enc, io.TeeReader(d.r.Head(), &b))
+	log.Printf(
+		"sendLocalBlock: size: %d, off: %d, data: %q",
+		hlen, d.off, b.Bytes(),
+	)
 	d.off += n
 	return err
 }
@@ -285,6 +281,10 @@ func (d *blockEncoder) flushReuseChunks() error {
 		return nil
 	}
 	numChunks := prevID - d.firstID + 1
+	log.Printf(
+		"flushReuseChunks: numChunks: %d, prevID: %d, d.firstID: %d, d.off: %d",
+		numChunks, prevID, d.firstID, d.off,
+	)
 	err := d.enc.Encode(RemoteBlockType)
 	if err != nil {
 		return nil
@@ -312,14 +312,20 @@ func (d *blockEncoder) flush() error {
 	if err != nil {
 		return err
 	}
+	blen := d.r.BufferedLen()
 	err = d.enc.Encode(LocalBlock{
-		Size: d.r.BufferedLen(),
+		Size: blen,
 		Off:  d.off,
 	})
 	if err != nil {
 		return err
 	}
-	n, err := io.Copy(d.enc, d.r.Buffered())
+	var b bytes.Buffer
+	n, err := io.Copy(d.enc, io.TeeReader(d.r.Buffered(), &b))
+	log.Printf(
+		"flush: localblock: size: %d, off: %d, sent: %d data: %q",
+		blen, d.off, n, b.Bytes(),
+	)
 	d.off += n
 	return err
 }
