@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	stdadler32 "hash/adler32"
 	"io"
@@ -30,9 +31,13 @@ type Receiver struct {
 
 func (r *Receiver) BuildFiles(nrChangedFiles int) error {
 	for i := 0; i < nrChangedFiles; i++ {
+		s := &r.SrcFiles[i]
+		if s.Mode.IsDir() {
+			continue
+		}
 		err := r.buildFile()
 		if err != nil {
-			return err
+			return fmt.Errorf("%#v: %w", s, err)
 		}
 	}
 	return nil
@@ -290,13 +295,23 @@ func SendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Enc
 			continue
 		}
 		nrChanged++
+		if v.Mode.IsDir() && !info.IsDir() {
+			return 0, errors.New("file type mismatch")
+		}
+		size := info.Size()
+		if info.IsDir() {
+			size = 0
+		}
 		if err := enc.Encode(DstFile{
 			ID:        i,
 			ChunkSize: chunkSize,
-			Size:      info.Size(),
+			Size:      size,
 			Type:      DstFileSimilar,
 		}); err != nil {
 			return nrChanged, err
+		}
+		if v.Mode.IsDir() {
+			continue
 		}
 		list[i].chunkSize = chunkSize
 		list[i].dstFileSize = info.Size()
@@ -305,6 +320,18 @@ func SendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Enc
 		}
 	}
 	return nrChanged, nil
+}
+
+// MkDirs create all the empty directories in the src file list
+func MkDirs(list []ReceiverSrcFile, root string) error {
+	for _, v := range list {
+		if v.Mode.IsDir() {
+			if err := os.MkdirAll(filepath.Join(root, v.Path), 0755); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func RecvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {

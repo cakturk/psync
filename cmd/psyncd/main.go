@@ -76,6 +76,9 @@ func run(l net.Listener, root string, blockSize int) error {
 		if err != nil {
 			return fmt.Errorf("src file list: %w", err)
 		}
+		if err := psync.MkDirs(rs, root); err != nil {
+			return err
+		}
 		enc := gob.NewEncoder(c)
 		n, err := psync.SendDstFileList(root, blockSize, rs, enc)
 		if err != nil {
