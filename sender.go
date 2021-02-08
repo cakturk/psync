@@ -46,7 +46,7 @@ type Sender struct {
 func (s *Sender) SendBlockDescList() error {
 	for i := range s.Files {
 		sf := &s.Files[i]
-		if sf.dst.Type != DstFileIdentical {
+		if sf.dst.Type != DstFileIdentical && !sf.Mode.IsDir() {
 			err := s.sendOneBlockDesc(i, sf)
 			if err != nil {
 				return err
@@ -327,14 +327,25 @@ func (d *blockEncoder) flush() error {
 	return err
 }
 
-func GenSrcFileList(root string) ([]SenderSrcFile, error) {
+func GenSrcFileList(root string, includeEmptyDirs bool) ([]SenderSrcFile, error) {
 	var list []SenderSrcFile
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+		size := info.Size()
 		if info.IsDir() {
-			return nil
+			if includeEmptyDirs {
+				if path == root {
+					return nil
+				}
+				if n := info.Name(); n == "." || n == ".." {
+					return nil
+				}
+			} else {
+				return nil
+			}
+			size = 0
 		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
@@ -346,7 +357,7 @@ func GenSrcFileList(root string) ([]SenderSrcFile, error) {
 				Uid:   int(info.Sys().(*syscall.Stat_t).Uid),
 				Gid:   int(info.Sys().(*syscall.Stat_t).Gid),
 				Mode:  info.Mode(),
-				Size:  info.Size(),
+				Size:  size,
 				Mtime: info.ModTime(),
 			},
 		})
