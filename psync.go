@@ -197,8 +197,13 @@ func (b *DstFile) NumChunks() int {
 	return int((b.Size + (int64(b.ChunkSize) - 1)) / int64(b.ChunkSize))
 }
 
-func (b *DstFile) LastChunkID() int     { return b.NumChunks() - 1 }
-func (b *DstFile) LastChunkSize() int64 { return b.Size % int64(b.ChunkSize) }
+func (b *DstFile) LastChunkID() int { return b.NumChunks() - 1 }
+func (b *DstFile) LastChunkSize() int64 {
+	if len := b.Size % int64(b.ChunkSize); len > 0 {
+		return len
+	}
+	return int64(b.ChunkSize)
+}
 
 type BlockSum struct {
 	Rsum uint32

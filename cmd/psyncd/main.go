@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	addr  = flag.String("addr", "127.0.0.1:33333", "listen addr")
-	proto = flag.String("proto", "tcp4", "listen protocol defaults to tcp (tcp, unix)")
+	addr      = flag.String("addr", "127.0.0.1:33333", "listen addr")
+	proto     = flag.String("proto", "tcp4", "listen protocol defaults to tcp (tcp, unix)")
+	blocksize = flag.Int("blocksize", 8, "block size")
 
 	handshakeReadDeadline        = 300 * time.Millisecond
 	protoVersion          uint16 = 1
@@ -32,25 +33,25 @@ func main() {
 		die(1, "requires a directory argument")
 	}
 	if flag.NArg() != 1 {
-		die(1, "invalid argument: %v", flag.Args())
+		die(2, "invalid argument: %v", flag.Args())
 	}
 	ls, err := net.Listen(*proto, *addr)
 	if err != nil {
-		die(1, "failed to listen: %v", err)
+		die(3, "failed to listen: %v", err)
 	}
-	if err := run(ls, flag.Arg(0)); err != nil {
-		die(1, "%v", err)
+	if err := run(ls, flag.Arg(0), *blocksize); err != nil {
+		die(4, "%v", err)
 	}
 }
 
-func run(l net.Listener, root string) error {
+func run(l net.Listener, root string, blockSize int) error {
 	defer l.Close()
 	for {
 		c, err := l.Accept()
 		if err != nil {
 			return fmt.Errorf("failed to accept: %w", err)
 		}
-		c.SetReadDeadline(time.Now().Add(handshakeReadDeadline))
+		// c.SetReadDeadline(time.Now().Add(handshakeReadDeadline))
 		h, err := psync.ReadHandshake(c)
 		if err != nil {
 			c.Close()
@@ -73,12 +74,12 @@ func run(l net.Listener, root string) error {
 		dec := gob.NewDecoder(br)
 		rs, err := psync.RecvSrcFileList(dec)
 		if err != nil {
-			return err
+			return fmt.Errorf("src file list: %w", err)
 		}
 		enc := gob.NewEncoder(c)
-		n, err := psync.SendDstFileList(root, 8, rs, enc)
+		n, err := psync.SendDstFileList(root, blockSize, rs, enc)
 		if err != nil {
-			return err
+			return fmt.Errorf("send dst: %w", err)
 		}
 		if n == 0 {
 			log.Println("nothing has been changed")
@@ -95,7 +96,7 @@ func run(l net.Listener, root string) error {
 		}
 		err = recver.BuildFiles(n)
 		if err != nil {
-			return err
+			return fmt.Errorf("build: %w", err)
 		}
 	}
 }
