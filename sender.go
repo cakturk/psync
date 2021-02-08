@@ -59,9 +59,6 @@ func (s *Sender) SendBlockDescList() error {
 // TODO: Is this id parameter really needed? Maybe we can get it from
 // the destination file struct.
 func (s *Sender) sendOneBlockDesc(id int, e *SenderSrcFile) error {
-	if e.Size == 0 {
-		return nil
-	}
 	f, err := os.Open(filepath.Join(s.Root, e.Path))
 	if err != nil {
 		return err

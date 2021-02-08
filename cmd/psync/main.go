@@ -13,9 +13,6 @@ import (
 	"github.com/cakturk/psync"
 )
 
-type client struct {
-}
-
 var (
 	addr  = flag.String("addr", "127.0.0.1:33333", "server addr")
 	proto = flag.String("proto", "tcp4", "connection protocol defaults to tcp (tcp, unix)")
@@ -67,7 +64,7 @@ func run(conn net.Conn, root string) error {
 		return err
 	}
 	dec := gob.NewDecoder(conn)
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	// conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	n, err := psync.RecvDstFileList(dec, s)
 	if err != nil {
 		return err
@@ -77,9 +74,6 @@ func run(conn net.Conn, root string) error {
 		return nil
 	}
 	log.Printf("%d file(s) seems to have changed", n)
-	// for _, v := range s {
-	// 	fmt.Printf("%#v\n", v)
-	// }
 	sender := psync.Sender{
 		Enc: encWriter{
 			Writer:  conn,

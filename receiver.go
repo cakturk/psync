@@ -41,7 +41,7 @@ func (r *Receiver) BuildFiles(nrChangedFiles int) error {
 func (r *Receiver) buildFile() error {
 	var fd FileDesc
 	if err := r.Dec.Decode(&fd); err != nil {
-		return err
+		return fmt.Errorf("buildfile: %w", err)
 	}
 	if fd.ID < 0 && fd.ID > len(r.SrcFiles) {
 		return fmt.Errorf("there is no such file with id: %d", fd.ID)
@@ -68,6 +68,9 @@ func (r *Receiver) buildFile() error {
 	if err = r.merge(s, f, tmp); err != nil {
 		return err
 	}
+	if err := tmp.Chmod(s.Mode); err != nil {
+		return err
+	}
 	if err := os.Rename(tmp.Name(), f.Name()); err != nil {
 		return err
 	}
@@ -79,6 +82,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 	if err != nil {
 		panic(err)
 	}
+	defer fb.Close()
 	sum := md5.New()
 	tmp = io.MultiWriter(tmp, sum, fb)
 	var off int64
@@ -152,7 +156,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		}
 	}
 	// TODO: check exact file size before returning?
-	if off < s.Size {
+	if off != s.Size {
 		return fmt.Errorf("unexpected EOF: off: %d, size: %d", off, s.Size)
 	}
 	var (
