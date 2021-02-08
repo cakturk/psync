@@ -53,7 +53,10 @@ func (r *Receiver) buildFile() error {
 	if fd.Typ != PartialFile {
 		return fmt.Errorf("unrecognized file descriptor type: %v", fd.Typ)
 	}
-	tmp, err := ioutil.TempFile("", "psync*.tmp")
+	// TODO: if we send file descriptors and create files at the same
+	// time, this temporary file may end up in the receiver file list,
+	// which is not we want.
+	tmp, err := ioutil.TempFile(r.Root, "psync*.tmp")
 	if err != nil {
 		return err
 	}
@@ -186,6 +189,10 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 
 func (r *Receiver) create(s *ReceiverSrcFile) error {
 	name := filepath.Join(r.Root, s.Path)
+	dir := filepath.Dir(name)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
 	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, s.Mode)
 	if err != nil {
 		return err
