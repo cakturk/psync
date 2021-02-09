@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	stdadler32 "hash/adler32"
 	"io"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -563,47 +561,6 @@ func TestHowMany(t *testing.T) {
 	if r != 2 {
 		t.Errorf("r: %d", r)
 	}
-}
-
-func TestDir(t *testing.T) {
-	// p := filepath.Join("foo", "bar/")
-	p := "."
-	d := filepath.Dir(p)
-	t.Errorf("%q", d)
-}
-
-func TestWalk(t *testing.T) {
-	root := "testdata"
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			t.Errorf("dir: %v, name: %v", path, info.Name())
-		}
-		// rel, err := filepath.Rel(root, path)
-		// if err != nil {
-		// 	return err
-		// }
-		return nil
-	})
-	t.Errorf("err: %q", err)
-
-}
-
-func TestExist(t *testing.T) {
-	srcDir := "testdata/client/dd"
-	dstDir := "/tmp/junkdir"
-	inf, err := os.Stat(srcDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = inf
-	t.Errorf("%v, size: %d", inf.Mode(), inf.Size())
-	err = os.MkdirAll(dstDir, inf.Mode().Perm())
-	t.Errorf("mkdir: %#v", err)
-	err = os.RemoveAll("/tmp/junk")
-	t.Errorf("rm: %#v", err)
 }
 
 func TestHandshake(t *testing.T) {

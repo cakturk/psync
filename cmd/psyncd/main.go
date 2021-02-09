@@ -76,6 +76,8 @@ func run(l net.Listener, root string, blockSize int) error {
 		if err != nil {
 			return fmt.Errorf("src file list: %w", err)
 		}
+		// TODO: this feels a little tricky. so find a better
+		// way to sync empty directories.
 		if err := psync.MkDirs(rs, root); err != nil {
 			return err
 		}
@@ -112,4 +114,15 @@ func die(code int, format string, a ...interface{}) {
 type decReader struct {
 	io.Reader
 	psync.Decoder
+}
+
+type debugEncoder struct {
+	s []interface{}
+	e *gob.Encoder
+}
+
+func (d *debugEncoder) Encode(e interface{}) error {
+	d.s = append(d.s, e)
+	fmt.Printf("%#v\n", e)
+	return d.e.Encode(e)
 }

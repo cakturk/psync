@@ -60,7 +60,6 @@ func run(conn net.Conn, root string, allowEmptyDirs bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%#v", s)
 	enc := gob.NewEncoder(conn)
 	err = psync.SendSrcFileList(enc, s)
 	if err != nil {
