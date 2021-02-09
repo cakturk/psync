@@ -31,13 +31,9 @@ type Receiver struct {
 
 func (r *Receiver) BuildFiles(nrChangedFiles int) error {
 	for i := 0; i < nrChangedFiles; i++ {
-		s := &r.SrcFiles[i]
-		if s.Mode.IsDir() {
-			continue
-		}
 		err := r.buildFile()
 		if err != nil {
-			return fmt.Errorf("%#v: %w", s, err)
+			return err
 		}
 	}
 	return nil
@@ -285,7 +281,10 @@ func SendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Enc
 			}
 			return nrChanged, err
 		}
-		if info.ModTime() == v.Mtime && info.Size() == v.Size {
+		if v.Mode.IsDir() && !info.IsDir() {
+			return 0, errors.New("file type mismatch")
+		}
+		if info.IsDir() || info.ModTime() == v.Mtime && info.Size() == v.Size {
 			if err := enc.Encode(DstFile{
 				ID:   i,
 				Type: DstFileIdentical,
@@ -295,23 +294,13 @@ func SendDstFileList(root string, chunkSize int, list []ReceiverSrcFile, enc Enc
 			continue
 		}
 		nrChanged++
-		if v.Mode.IsDir() && !info.IsDir() {
-			return 0, errors.New("file type mismatch")
-		}
-		size := info.Size()
-		if info.IsDir() {
-			size = 0
-		}
 		if err := enc.Encode(DstFile{
 			ID:        i,
 			ChunkSize: chunkSize,
-			Size:      size,
+			Size:      info.Size(),
 			Type:      DstFileSimilar,
 		}); err != nil {
 			return nrChanged, err
-		}
-		if v.Mode.IsDir() {
-			continue
 		}
 		list[i].chunkSize = chunkSize
 		list[i].dstFileSize = info.Size()
