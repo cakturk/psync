@@ -326,7 +326,7 @@ func MkDirs(list []ReceiverSrcFile, root string) error {
 func DeleteExtra(list []ReceiverSrcFile, root string) error {
 	files := make(map[string]bool)
 	for _, m := range list {
-		files[m.Path] = true
+		files[filepath.Join(root, m.Path)] = true
 	}
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -341,11 +341,7 @@ func DeleteExtra(list []ReceiverSrcFile, root string) error {
 		if n := info.Name(); n == "." || n == ".." {
 			return nil
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		if exist := files[rel]; !exist {
+		if exist := files[path]; !exist {
 			err := os.RemoveAll(path)
 			if err != nil {
 				log.Printf("RemoveAll: %v", err)
@@ -353,10 +349,7 @@ func DeleteExtra(list []ReceiverSrcFile, root string) error {
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func RecvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {
