@@ -76,6 +76,10 @@ func run(l net.Listener, root string, blockSize int) error {
 		if err != nil {
 			return fmt.Errorf("src file list: %w", err)
 		}
+		// First remove extraneous files
+		if err := psync.DeleteExtra(rs, root); err != nil {
+			return err
+		}
 		// TODO: this feels a little tricky. so find a better
 		// way to sync empty directories.
 		if err := psync.MkDirs(rs, root); err != nil {
