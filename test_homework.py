@@ -36,6 +36,8 @@ SHUTDOWN_TIMEOUT = 10.0
 SERVER_PATH = '/tmp/dropbox/server'
 CLIENT_PATH = '/tmp/dropbox/client'
 
+SERVER_CMD = 'go run ./cmd/psyncd /tmp/dropbox/server'
+CLIENT_CMD = 'go run ./cmd/psync /tmp/dropbox/client'
 
 def spit(filename, data):
     """Save data into the given filename."""
@@ -116,28 +118,28 @@ def assert_paths_in_sync(path1, path2, timeout=ASSERT_TIMEOUT, step=ASSERT_STEP)
     assert contents1 == contents2
 
 
-def client():
-    """Dumbest reference implementation of a client that copies files recursively."""
-    print('CLIENT STARTED', argv)
-    client_path = argv[-2]
-    server_path = argv[-1]
-    sync_paths(client_path, server_path)
-    while True:
-        if path_content_to_string(client_path) != path_content_to_string(server_path):
-            print('Client syncing...')
-            sync_paths(client_path, server_path)
-        print('Client sleeping 1 second')
-        sleep(1.0)
-    print('CLIENT DONE', argv)
+# def client():
+#     """Dumbest reference implementation of a client that copies files recursively."""
+#     print('CLIENT STARTED', argv)
+#     client_path = argv[-2]
+#     server_path = argv[-1]
+#     sync_paths(client_path, server_path)
+#     while True:
+#         if path_content_to_string(client_path) != path_content_to_string(server_path):
+#             print('Client syncing...')
+#             sync_paths(client_path, server_path)
+#         print('Client sleeping 1 second')
+#         sleep(1.0)
+#     print('CLIENT DONE', argv)
 
 
-def server():
-    """Server reference implementation, does nothing, just for demo purposes."""
-    print('SERVER STARTED', argv)
-    while True:
-        print('Server sleeping 1 second')
-        sleep(1.0)
-    print('SERVER DONE', argv)
+# def server():
+#     """Server reference implementation, does nothing, just for demo purposes."""
+#     print('SERVER STARTED', argv)
+#     while True:
+#         print('Server sleeping 1 second')
+#         sleep(1.0)
+#     print('SERVER DONE', argv)
 
 
 class Process:
@@ -168,8 +170,8 @@ class TestBasic(TestCase):
         self.cpath = CLIENT_PATH
         reset_path(self.spath)
         reset_path(self.cpath)
-        self.server_cmd = environ['SERVER_CMD']
-        self.client_cmd = environ['CLIENT_CMD']
+        self.server_cmd = SERVER_CMD
+        self.client_cmd = CLIENT_CMD
         print(self.server_cmd)
         print(self.client_cmd)
         self.server_process = Process(self.server_cmd)
@@ -276,8 +278,8 @@ class TestInitialSync(TestCase):
         self.cpath = CLIENT_PATH
         reset_path(self.spath)
         reset_path(self.cpath)
-        self.server_cmd = environ['SERVER_CMD']
-        self.client_cmd = environ['CLIENT_CMD']
+        self.server_cmd = SERVER_CMD
+        self.client_cmd = CLIENT_CMD
         print(self.server_cmd)
         print(self.client_cmd)
 
