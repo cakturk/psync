@@ -72,13 +72,15 @@ func run(l net.Listener, root string, blockSize int) error {
 		}
 		br := bufio.NewReader(c)
 		dec := gob.NewDecoder(br)
-		rs, err := psync.RecvSrcFileList(dec)
+		rs, delete, err := psync.RecvSrcFileList(dec)
 		if err != nil {
 			return fmt.Errorf("src file list: %w", err)
 		}
 		// First remove extraneous files
-		if err := psync.DeleteExtra(rs, root); err != nil {
-			return err
+		if delete {
+			if err := psync.DeleteExtra(rs, root); err != nil {
+				return err
+			}
 		}
 		// TODO: this feels a little tricky. so find a better
 		// way to sync empty directories.

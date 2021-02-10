@@ -384,10 +384,11 @@ func (s *SrcFileLister) AddSrcFile(list []SenderSrcFile, path string, info os.Fi
 // - and then read the same number of target files from the receiver side
 // - remember, each target file contains (*DstFile).NumChunks() number of
 //   blocks after it.
-func SendSrcFileList(enc Encoder, list []SenderSrcFile) error {
+func SendSrcFileList(enc Encoder, list []SenderSrcFile, delete bool) error {
 	hdr := FileListHdr{
-		NumFiles: len(list),
-		Type:     SenderFileList,
+		NumFiles:    len(list),
+		Type:        SenderFileList,
+		DeleteExtra: delete,
 	}
 	err := enc.Encode(&hdr)
 	if err != nil {

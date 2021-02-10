@@ -17,6 +17,7 @@ var (
 	addr           = flag.String("addr", "127.0.0.1:33333", "server addr")
 	proto          = flag.String("proto", "tcp4", "connection protocol defaults to tcp (tcp, unix)")
 	deleteExtra    = flag.Bool("delete", false, "delete extraneous files from dest dirs")
+	mon            = flag.Bool("mon", false, "monitor file system events")
 	allowEmptyDirs = flag.Bool("allowemptydirs", true, "syncronize empty directories")
 )
 
@@ -35,7 +36,7 @@ func main() {
 	if err != nil {
 		die(1, "failed to connect %s", *addr)
 	}
-	if err := run(c, flag.Arg(0), *allowEmptyDirs); err != nil {
+	if err := run(c, flag.Arg(0), *allowEmptyDirs, *mon); err != nil {
 		c.Close()
 		die(2, "psync: %v", err)
 	}
@@ -49,7 +50,7 @@ func main() {
 // send block descriptors
 // ? receive some kind of exit code, which indicates wheter
 // the receiver was successful or not.
-func run(conn net.Conn, root string, allowEmptyDirs bool) error {
+func run(conn net.Conn, root string, allowEmptyDirs, mon bool) error {
 	defer conn.Close()
 	hs := psync.NewHandshake(1, psync.WireFormatGob, 0)
 	_, err := hs.WriteTo(conn)
@@ -77,8 +78,8 @@ func run(conn net.Conn, root string, allowEmptyDirs bool) error {
 		enc: enc,
 		dec: dec,
 	}
-	err = cli.sync(s)
-	if err != nil {
+	err = cli.sync(s, true)
+	if mon {
 		return err
 	}
 	return nil
@@ -90,8 +91,8 @@ type client struct {
 	dec    psync.Decoder
 }
 
-func (c *client) sync(list []psync.SenderSrcFile) error {
-	err := psync.SendSrcFileList(c.enc, list)
+func (c *client) sync(list []psync.SenderSrcFile, delete bool) error {
+	err := psync.SendSrcFileList(c.enc, list, delete)
 	if err != nil {
 		return err
 	}
