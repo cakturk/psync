@@ -99,6 +99,10 @@ def path_content_to_string(path):
     lines = sorted(lines)
     return '\n'.join(lines)
 
+if __name__ == '__main__':
+    pc = path_content_to_string(".")
+    print(pc)
+    pass
 
 def assert_paths_in_sync(path1, path2, timeout=ASSERT_TIMEOUT, step=ASSERT_STEP):
     current_time = 0

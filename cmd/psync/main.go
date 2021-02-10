@@ -17,7 +17,7 @@ var (
 	addr           = flag.String("addr", "127.0.0.1:33333", "server addr")
 	proto          = flag.String("proto", "tcp4", "connection protocol defaults to tcp (tcp, unix)")
 	deleteExtra    = flag.Bool("delete", false, "delete extraneous files from dest dirs")
-	allowEmptyDirs = flag.Bool("allowemptydirs", false, "syncronize empty directories")
+	allowEmptyDirs = flag.Bool("allowemptydirs", true, "syncronize empty directories")
 )
 
 func main() {
