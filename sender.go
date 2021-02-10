@@ -38,14 +38,13 @@ type SenderDstFile struct {
 }
 
 type Sender struct {
-	Enc   EncodeWriter
-	Root  string
-	Files []SenderSrcFile
+	Enc  EncodeWriter
+	Root string
 }
 
-func (s *Sender) SendBlockDescList() error {
-	for i := range s.Files {
-		sf := &s.Files[i]
+func (s *Sender) SendBlockDescList(files []SenderSrcFile) error {
+	for i := range files {
+		sf := &files[i]
 		if sf.dst.Type != DstFileIdentical && !sf.Mode.IsDir() {
 			err := s.sendOneBlockDesc(i, sf)
 			if err != nil {

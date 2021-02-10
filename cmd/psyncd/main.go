@@ -51,7 +51,7 @@ func run(l net.Listener, root string, blockSize int) error {
 		if err != nil {
 			return fmt.Errorf("failed to accept: %w", err)
 		}
-		// c.SetReadDeadline(time.Now().Add(handshakeReadDeadline))
+		c.SetReadDeadline(time.Now().Add(handshakeReadDeadline))
 		h, err := psync.ReadHandshake(c)
 		if err != nil {
 			c.Close()

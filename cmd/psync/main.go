@@ -65,13 +65,38 @@ func run(conn net.Conn, root string, allowEmptyDirs bool) error {
 		return err
 	}
 	enc := gob.NewEncoder(conn)
-	err = psync.SendSrcFileList(enc, s)
+	dec := gob.NewDecoder(conn)
+	cli := client{
+		sender: psync.Sender{
+			Enc: encWriter{
+				Writer:  conn,
+				Encoder: enc,
+			},
+			Root: root,
+		},
+		enc: enc,
+		dec: dec,
+	}
+	err = cli.sync(s)
 	if err != nil {
 		return err
 	}
-	dec := gob.NewDecoder(conn)
+	return nil
+}
+
+type client struct {
+	sender psync.Sender
+	enc    psync.Encoder
+	dec    psync.Decoder
+}
+
+func (c *client) sync(list []psync.SenderSrcFile) error {
+	err := psync.SendSrcFileList(c.enc, list)
+	if err != nil {
+		return err
+	}
 	// conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	n, err := psync.RecvDstFileList(dec, s)
+	n, err := psync.RecvDstFileList(c.dec, list)
 	if err != nil {
 		return err
 	}
@@ -80,19 +105,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool) error {
 		return nil
 	}
 	log.Printf("%d file(s) seems to have changed", n)
-	sender := psync.Sender{
-		Enc: encWriter{
-			Writer:  conn,
-			Encoder: enc,
-		},
-		Root:  root,
-		Files: s,
-	}
-	err = sender.SendBlockDescList()
-	if err != nil {
-		return err
-	}
-	return nil
+	return c.sender.SendBlockDescList(list)
 }
 
 func die(code int, format string, a ...interface{}) {
