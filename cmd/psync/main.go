@@ -56,7 +56,11 @@ func run(conn net.Conn, root string, allowEmptyDirs bool) error {
 	if err != nil {
 		return err
 	}
-	s, err := psync.GenSrcFileList(root, allowEmptyDirs)
+	lis := psync.SrcFileLister{
+		Root:             root,
+		IncludeEmptyDirs: allowEmptyDirs,
+	}
+	s, err := lis.List()
 	if err != nil {
 		return err
 	}

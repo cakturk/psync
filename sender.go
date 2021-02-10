@@ -327,45 +327,55 @@ func (d *blockEncoder) flush() error {
 	return err
 }
 
-func GenSrcFileList(root string, includeEmptyDirs bool) ([]SenderSrcFile, error) {
+type SrcFileLister struct {
+	Root             string
+	IncludeEmptyDirs bool
+}
+
+func (s *SrcFileLister) List() ([]SenderSrcFile, error) {
 	var list []SenderSrcFile
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(s.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		size := info.Size()
-		if info.IsDir() {
-			if includeEmptyDirs {
-				if path == root {
-					return nil
-				}
-				if n := info.Name(); n == "." || n == ".." {
-					return nil
-				}
-			} else {
-				return nil
-			}
-			size = 0
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		list = append(list, SenderSrcFile{
-			SrcFile: SrcFile{
-				Path:  rel,
-				Uid:   int(info.Sys().(*syscall.Stat_t).Uid),
-				Gid:   int(info.Sys().(*syscall.Stat_t).Gid),
-				Mode:  info.Mode(),
-				Size:  size,
-				Mtime: info.ModTime(),
-			},
-		})
-		return nil
+		list, err = s.AddSrcFile(list, path, info)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
+	return list, nil
+}
+
+func (s *SrcFileLister) AddSrcFile(list []SenderSrcFile, path string, info os.FileInfo) ([]SenderSrcFile, error) {
+	size := info.Size()
+	if info.IsDir() {
+		if s.IncludeEmptyDirs {
+			if path == s.Root {
+				return list, nil
+			}
+			if n := info.Name(); n == "." || n == ".." {
+				return list, nil
+			}
+		} else {
+			return list, nil
+		}
+		size = 0
+	}
+	rel, err := filepath.Rel(s.Root, path)
+	if err != nil {
+		return list, err
+	}
+	list = append(list, SenderSrcFile{
+		SrcFile: SrcFile{
+			Path:  rel,
+			Uid:   int(info.Sys().(*syscall.Stat_t).Uid),
+			Gid:   int(info.Sys().(*syscall.Stat_t).Gid),
+			Mode:  info.Mode(),
+			Size:  size,
+			Mtime: info.ModTime(),
+		},
+	})
 	return list, nil
 }
 
