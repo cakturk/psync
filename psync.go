@@ -132,8 +132,9 @@ const (
 )
 
 type FileListHdr struct {
-	NumFiles int
-	Type     FileListType
+	NumFiles    int
+	Type        FileListType
+	DeleteExtra bool
 }
 
 type BlockType byte

@@ -352,21 +352,21 @@ func DeleteExtra(list []ReceiverSrcFile, root string) error {
 	return err
 }
 
-func RecvSrcFileList(dec Decoder) ([]ReceiverSrcFile, error) {
+func RecvSrcFileList(dec Decoder) ([]ReceiverSrcFile, bool, error) {
 	var hdr FileListHdr
 	err := dec.Decode(&hdr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to recv src file list header: %w", err)
+		return nil, false, fmt.Errorf("failed to recv src file list header: %w", err)
 	}
 	if hdr.Type != SenderFileList {
-		return nil, fmt.Errorf("receiver: invalid header type: %v", hdr.Type)
+		return nil, false, fmt.Errorf("receiver: invalid header type: %v", hdr.Type)
 	}
 	list := make([]ReceiverSrcFile, hdr.NumFiles)
 	for i := range list {
 		err := dec.Decode(&list[i].SrcFile)
 		if err != nil {
-			return nil, fmt.Errorf("recving src list failed: %w", err)
+			return nil, false, fmt.Errorf("recving src list failed: %w", err)
 		}
 	}
-	return list, nil
+	return list, hdr.DeleteExtra, nil
 }
