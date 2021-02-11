@@ -43,8 +43,10 @@ type Sender struct {
 }
 
 func (s *Sender) SendBlockDescList(files []SenderSrcFile) error {
+	log.Printf("sendOneBlockDesc: 0")
 	for i := range files {
 		sf := &files[i]
+		log.Print("sendOneBlockDesc:", sf.Path)
 		if sf.dst.Type != DstFileIdentical && !sf.Mode.IsDir() {
 			err := s.sendOneBlockDesc(i, sf)
 			if err != nil {
@@ -337,7 +339,7 @@ func (s *SrcFileLister) List() ([]SenderSrcFile, error) {
 		if err != nil {
 			return err
 		}
-		list, err = s.AddSrcFile(list, path, info)
+		list, err = s.addSrcFile(list, path, info)
 		return err
 	})
 	if err != nil {
@@ -346,7 +348,15 @@ func (s *SrcFileLister) List() ([]SenderSrcFile, error) {
 	return list, nil
 }
 
-func (s *SrcFileLister) AddSrcFile(list []SenderSrcFile, path string, info os.FileInfo) ([]SenderSrcFile, error) {
+func (s *SrcFileLister) AddSrcFile(list []SenderSrcFile, path string) ([]SenderSrcFile, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return s.addSrcFile(list, path, info)
+}
+
+func (s *SrcFileLister) addSrcFile(list []SenderSrcFile, path string, info os.FileInfo) ([]SenderSrcFile, error) {
 	size := info.Size()
 	if info.IsDir() {
 		if s.IncludeEmptyDirs {
