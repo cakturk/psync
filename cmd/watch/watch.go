@@ -28,6 +28,7 @@ func main() {
 					log.Println("modified file:", event.Name)
 				}
 				if event.Op&fsnotify.Create == fsnotify.Create {
+					log.Printf("ent: %s", event.Name)
 					watchRecursive(watcher, event.Name)
 				}
 			case err, ok := <-watcher.Errors:
@@ -47,13 +48,14 @@ func main() {
 	<-done
 }
 
-func watchRecursive(watcher *fsnotify.Watcher, path string) error {
-	err := filepath.Walk(path, func(walkPath string, fi os.FileInfo, err error) error {
+func watchRecursive(watcher *fsnotify.Watcher, root string) error {
+	err := filepath.Walk(root, func(walkPath string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("rec: %s, dir: %v", path, fi.IsDir())
+		log.Printf("walk: %s, isdir: %v", walkPath, fi.IsDir())
 		if fi.IsDir() {
+			// log.Printf("rec: %s, dir: %v", path, fi.IsDir())
 			if err = watcher.Add(walkPath); err != nil {
 				return err
 			}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cakturk/psync"
+	"github.com/fsnotify/fsnotify"
 )
 
 var (
@@ -36,7 +37,7 @@ func main() {
 	if err != nil {
 		die(1, "failed to connect %s", *addr)
 	}
-	if err := run(c, flag.Arg(0), *allowEmptyDirs, *mon); err != nil {
+	if err := run(c, flag.Arg(0), *allowEmptyDirs, nil); err != nil {
 		c.Close()
 		die(2, "psync: %v", err)
 	}
@@ -50,7 +51,7 @@ func main() {
 // send block descriptors
 // ? receive some kind of exit code, which indicates wheter
 // the receiver was successful or not.
-func run(conn net.Conn, root string, allowEmptyDirs, mon bool) error {
+func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watcher) error {
 	defer conn.Close()
 	hs := psync.NewHandshake(1, psync.WireFormatGob, 0)
 	_, err := hs.WriteTo(conn)
@@ -79,7 +80,7 @@ func run(conn net.Conn, root string, allowEmptyDirs, mon bool) error {
 		dec: dec,
 	}
 	err = cli.sync(s, true)
-	if mon {
+	if watcher == nil {
 		return err
 	}
 	return nil
