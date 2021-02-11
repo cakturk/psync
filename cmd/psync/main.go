@@ -48,7 +48,7 @@ func main() {
 	}
 	if err := run(c, flag.Arg(0), *allowEmptyDirs, watcher); err != nil {
 		c.Close()
-		die(2, "psync: %v", err)
+		die(2, "%v", err)
 	}
 }
 
@@ -111,16 +111,25 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 				if err != nil {
 					return err
 				}
+				if err := cli.sync(sl, false); err != nil {
+					return err
+				}
 				log.Print("write|modify:", event, sl)
 			case fsnotify.Create:
 				var sl []psync.SenderSrcFile
-				s, _ := watchRecursiveFn(watcher, event.Name, func(path string) {
+				_, err = watchRecursiveFn(watcher, event.Name, func(path string) {
 					// log.Printf("cb: %s", path)
 					sl, err = lis.AddSrcFile(sl, path)
 					if err != nil {
 						return
 					}
 				})
+				if err != nil {
+					return err
+				}
+				if err := cli.sync(sl, false); err != nil {
+					return err
+				}
 				log.Print("create:", event, s, sl)
 			case fsnotify.Remove:
 				s, err := lis.List()
