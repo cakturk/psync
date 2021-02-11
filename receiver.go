@@ -198,14 +198,14 @@ func (r *Receiver) create(s *ReceiverSrcFile) error {
 		return err
 	}
 	defer f.Close()
-	n, err := io.Copy(f, r.Dec)
+	n, err := io.CopyN(f, r.Dec, s.Size)
 	if err != nil {
 		return err
 	}
 	if n != s.Size {
 		return fmt.Errorf(
-			"new file size mismatch: got %d, want %d",
-			n, s.Size,
+			"new file size mismatch (%s): got %d, want %d",
+			name, n, s.Size,
 		)
 	}
 	return os.Chtimes(name, s.Mtime, s.Mtime)

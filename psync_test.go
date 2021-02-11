@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	stdadler32 "hash/adler32"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -576,6 +578,19 @@ func TestHandshake(t *testing.T) {
 	}
 	if !reflect.DeepEqual(&got, want) {
 		t.Fatalf("Handshake.WriteTo(...) = %#v, want %#v", got, want)
+	}
+}
+
+func TestWalk(t *testing.T) {
+	err := filepath.Walk("/tmp/foo/reg", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		t.Errorf("path: %s", path)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
