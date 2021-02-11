@@ -337,7 +337,7 @@ func (s *SrcFileLister) List() ([]SenderSrcFile, error) {
 	var list []SenderSrcFile
 	err := filepath.Walk(s.Root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("List: %w", err)
 		}
 		list, err = s.addSrcFile(list, path, info)
 		return err

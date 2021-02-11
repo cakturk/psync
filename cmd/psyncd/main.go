@@ -72,42 +72,44 @@ func run(l net.Listener, root string, blockSize int) error {
 		}
 		br := bufio.NewReader(c)
 		dec := gob.NewDecoder(br)
-		rs, delete, err := psync.RecvSrcFileList(dec)
-		if err != nil {
-			return fmt.Errorf("src file list: %w", err)
-		}
-		// First remove extraneous files
-		if delete {
-			if err := psync.DeleteExtra(rs, root); err != nil {
+		enc := gob.NewEncoder(c)
+		for {
+			rs, delete, err := psync.RecvSrcFileList(dec)
+			if err != nil {
+				return fmt.Errorf("src file list: %w", err)
+			}
+			// First remove extraneous files
+			if delete {
+				if err := psync.DeleteExtra(rs, root); err != nil {
+					return err
+				}
+			}
+			// TODO: this feels a little tricky. so find a better
+			// way to sync empty directories.
+			if err := psync.MkDirs(rs, root); err != nil {
 				return err
 			}
-		}
-		// TODO: this feels a little tricky. so find a better
-		// way to sync empty directories.
-		if err := psync.MkDirs(rs, root); err != nil {
-			return err
-		}
-		enc := gob.NewEncoder(c)
-		n, err := psync.SendDstFileList(root, blockSize, rs, enc)
-		if err != nil {
-			return fmt.Errorf("send dst: %w", err)
-		}
-		if n == 0 {
-			log.Println("nothing has been changed")
-			continue
-		}
-		log.Printf("%d file(s) seems to have changed", n)
-		recver := psync.Receiver{
-			Root:     root,
-			SrcFiles: rs,
-			Dec: decReader{
-				Reader:  br,
-				Decoder: dec,
-			},
-		}
-		err = recver.BuildFiles(n)
-		if err != nil {
-			return fmt.Errorf("build: %w", err)
+			n, err := psync.SendDstFileList(root, blockSize, rs, enc)
+			if err != nil {
+				return fmt.Errorf("send dst: %w", err)
+			}
+			if n == 0 {
+				log.Println("nothing has been changed")
+				continue
+			}
+			log.Printf("%d file(s) seems to have changed", n)
+			recver := psync.Receiver{
+				Root:     root,
+				SrcFiles: rs,
+				Dec: decReader{
+					Reader:  br,
+					Decoder: dec,
+				},
+			}
+			err = recver.BuildFiles(n)
+			if err != nil {
+				return fmt.Errorf("build: %w", err)
+			}
 		}
 	}
 }
