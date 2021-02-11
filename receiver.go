@@ -12,7 +12,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 )
 
 type ReceiverSrcFile struct {
@@ -96,7 +95,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			if err == io.EOF {
 				break
 			}
-			runtime.Breakpoint()
+			// runtime.Breakpoint()
 			return fmt.Errorf("failed to decode BlockType (%d/%d): %w", off, s.Size, err)
 		}
 		switch typ {
@@ -104,7 +103,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			var lb LocalBlock
 			var b bytes.Buffer
 			if err := r.Dec.Decode(&lb); err != nil {
-				runtime.Breakpoint()
+				// runtime.Breakpoint()
 				return err
 			}
 			if off != lb.Off {
@@ -120,7 +119,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			var rb RemoteBlock
 			var b bytes.Buffer
 			if err := r.Dec.Decode(&rb); err != nil {
-				runtime.Breakpoint()
+				// runtime.Breakpoint()
 				return err
 			}
 			// XXX: rb.Off is not a remote file offset. Instead it
