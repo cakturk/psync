@@ -139,7 +139,7 @@ func TestRecvSrcFileList(t *testing.T) {
 		},
 	}
 	dec := createFakeDecoder(in...)
-	list, err := RecvSrcFileList(dec)
+	list, _, err := RecvSrcFileList(dec)
 	if err != nil {
 		t.Fatal(err)
 	}
