@@ -95,7 +95,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 		return nil
 	}
 	defer watcher.Close()
-	if _, err = watchRecursive(watcher, root); err != nil {
+	if err = watchRecursive(watcher, root); err != nil {
 		return err
 	}
 	for {
@@ -117,7 +117,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 				log.Print("write|modify:", event, sl)
 			case fsnotify.Create:
 				var sl []psync.SenderSrcFile
-				_, err = watchRecursiveFn(watcher, event.Name, func(path string) {
+				err = watchRecursiveFn(watcher, event.Name, func(path string) {
 					// log.Printf("cb: %s", path)
 					sl, err = lis.AddSrcFile(sl, path)
 					if err != nil {
@@ -194,8 +194,7 @@ type encWriter struct {
 	psync.Encoder
 }
 
-func watchRecursiveFn(watcher *fsnotify.Watcher, root string, fn func(path string)) ([]string, error) {
-	var s []string
+func watchRecursiveFn(watcher *fsnotify.Watcher, root string, fn func(path string)) error {
 	err := filepath.Walk(root, func(walkPath string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -204,7 +203,6 @@ func watchRecursiveFn(watcher *fsnotify.Watcher, root string, fn func(path strin
 		if fn != nil {
 			fn(walkPath)
 		}
-		s = append(s, walkPath)
 		if fi.IsDir() {
 			// log.Printf("rec: %s, dir: %v", path, fi.IsDir())
 			if err = watcher.Add(walkPath); err != nil {
@@ -213,9 +211,9 @@ func watchRecursiveFn(watcher *fsnotify.Watcher, root string, fn func(path strin
 		}
 		return nil
 	})
-	return s, err
+	return err
 }
 
-func watchRecursive(watcher *fsnotify.Watcher, root string) ([]string, error) {
+func watchRecursive(watcher *fsnotify.Watcher, root string) error {
 	return watchRecursiveFn(watcher, root, nil)
 }

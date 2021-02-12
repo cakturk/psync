@@ -37,7 +37,7 @@ SERVER_PATH = '/tmp/dropbox/server'
 CLIENT_PATH = '/tmp/dropbox/client'
 
 SERVER_CMD = 'go run ./cmd/psyncd /tmp/dropbox/server'
-CLIENT_CMD = 'go run ./cmd/psync /tmp/dropbox/client'
+CLIENT_CMD = 'go run ./cmd/psync -mon /tmp/dropbox/client'
 
 def spit(filename, data):
     """Save data into the given filename."""
