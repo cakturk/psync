@@ -73,43 +73,65 @@ func run(l net.Listener, root string, blockSize int) error {
 		br := bufio.NewReader(c)
 		dec := gob.NewDecoder(br)
 		enc := gob.NewEncoder(c)
-		for {
-			rs, delete, err := psync.RecvSrcFileList(dec)
-			if err != nil {
-				return fmt.Errorf("src file list: %w", err)
-			}
-			// First remove extraneous files
-			if delete {
-				if err := psync.DeleteExtra(rs, root); err != nil {
-					return err
-				}
-			}
-			// TODO: this feels a little tricky. so find a better
-			// way to sync empty directories.
-			if err := psync.MkDirs(rs, root); err != nil {
-				return err
-			}
-			n, err := psync.SendDstFileList(root, blockSize, rs, enc)
-			if err != nil {
-				return fmt.Errorf("send dst: %w", err)
-			}
-			if n == 0 {
-				log.Println("nothing has been changed")
-				continue
-			}
-			log.Printf("%d file(s) seems to have changed", n)
-			recver := psync.Receiver{
-				Root:     root,
-				SrcFiles: rs,
+		s := session{
+			rcv: psync.Receiver{
+				Root: root,
 				Dec: decReader{
 					Reader:  br,
 					Decoder: dec,
 				},
+			},
+			enc:       enc,
+			dec:       dec,
+			root:      root,
+			blocksize: blockSize,
+		}
+		if err := s.syncLoop(); err != nil {
+			log.Printf("session ended: %v", err)
+			c.Close()
+		}
+	}
+}
+
+type session struct {
+	rcv       psync.Receiver
+	enc       psync.Encoder
+	dec       psync.Decoder
+	root      string
+	blocksize int
+}
+
+func (c *session) syncLoop() error {
+	for {
+		rs, delete, err := psync.RecvSrcFileList(c.dec)
+		if err != nil {
+			return fmt.Errorf("src file list: %w", err)
+		}
+		// First remove extraneous files
+		if delete {
+			if err := psync.DeleteExtra(rs, c.root); err != nil {
+				return err
 			}
-			err = recver.BuildFiles(n)
-			if err != nil {
-				return fmt.Errorf("build: %w", err)
-			}
+		}
+		// TODO: this feels a little tricky. so find a better
+		// way to sync empty directories.
+		if err := psync.MkDirs(rs, c.root); err != nil {
+			return err
+		}
+		n, err := psync.SendDstFileList(c.root, c.blocksize, rs, c.enc)
+		if err != nil {
+			return fmt.Errorf("send dst: %w", err)
+		}
+		if n == 0 {
+			log.Println("nothing has been changed")
+			continue
+		}
+		log.Printf("%d file(s) seems to have changed", n)
+		err = c.rcv.BuildFiles(n, rs)
+		// if err != nil {
+		// 	return fmt.Errorf("build: %w", err)
+		// }
+		if err := c.enc.Encode(uint32(0x1a2b)); err != nil {
 		}
 	}
 }

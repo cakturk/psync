@@ -24,6 +24,12 @@ func main() {
 					return
 				}
 				log.Println("event:", event)
+				st, err := os.Stat(event.Name)
+				if err != nil {
+					log.Printf("stat: %v", err)
+				} else {
+					log.Printf("file: %s, size: %d", st.Name(), st.Size())
+				}
 				if event.Op&fsnotify.Write == fsnotify.Write {
 					log.Println("modified file:", event.Name)
 				}
@@ -41,7 +47,11 @@ func main() {
 	}()
 
 	// err = watcher.Add("/tmp/foo")
-	err = watchRecursive(watcher, "/tmp/foo")
+	dir := "/tmp/foo"
+	if len(os.Args) > 1 {
+		dir = os.Args[1]
+	}
+	err = watchRecursive(watcher, dir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,7 +63,7 @@ func watchRecursive(watcher *fsnotify.Watcher, root string) error {
 		if err != nil {
 			return err
 		}
-		log.Printf("walk: %s, isdir: %v", walkPath, fi.IsDir())
+		// log.Printf("walk: %s, isdir: %v", walkPath, fi.IsDir())
 		if fi.IsDir() {
 			// log.Printf("rec: %s, dir: %v", path, fi.IsDir())
 			if err = watcher.Add(walkPath); err != nil {

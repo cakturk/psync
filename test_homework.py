@@ -36,7 +36,7 @@ SHUTDOWN_TIMEOUT = 10.0
 SERVER_PATH = '/tmp/dropbox/server'
 CLIENT_PATH = '/tmp/dropbox/client'
 
-SERVER_CMD = 'go run ./cmd/psyncd /tmp/dropbox/server'
+SERVER_CMD = 'go run ./cmd/psyncd -blocksize 300 /tmp/dropbox/server'
 CLIENT_CMD = 'go run ./cmd/psync -mon /tmp/dropbox/client'
 
 def spit(filename, data):

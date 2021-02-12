@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	stdadler32 "hash/adler32"
 	"io"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -387,23 +385,13 @@ func TestBuilder(t *testing.T) {
 		return sum[:]
 	}
 	var tests = []struct {
-		rcv  Receiver
-		want string
+		rcv      Receiver
+		srcFiles []ReceiverSrcFile
+		want     string
 	}{
 		{
 			rcv: Receiver{
 				Root: "",
-				SrcFiles: []ReceiverSrcFile{
-					{
-						SrcFile: SrcFile{
-							Path:  "",
-							Mode:  0666,
-							Size:  39,
-							Mtime: time.Now(),
-						},
-						chunkSize: 8,
-					},
-				},
 				Dec: createFakeDecoder(
 					LocalBlockType,
 					LocalBlock{
@@ -439,22 +427,22 @@ func TestBuilder(t *testing.T) {
 					csum("foobarbazpf\nghijklmnopqrstBellLabsheap\n"),
 				),
 			},
+			srcFiles: []ReceiverSrcFile{
+				{
+					SrcFile: SrcFile{
+						Path:  "",
+						Mode:  0666,
+						Size:  39,
+						Mtime: time.Now(),
+					},
+					chunkSize: 8,
+				},
+			},
 			want: "foobarbazpf\nghijklmnopqrstBellLabsheap\n",
 		},
 		{
 			rcv: Receiver{
 				Root: "",
-				SrcFiles: []ReceiverSrcFile{
-					{
-						SrcFile: SrcFile{
-							Path:  "",
-							Mode:  0666,
-							Size:  29,
-							Mtime: time.Now(),
-						},
-						chunkSize: 8,
-					},
-				},
 				Dec: createFakeDecoder(
 					RemoteBlockType,
 					RemoteBlock{
@@ -484,22 +472,22 @@ func TestBuilder(t *testing.T) {
 					csum("lan9FromBellLabsheap01234567\n"),
 				),
 			},
+			srcFiles: []ReceiverSrcFile{
+				{
+					SrcFile: SrcFile{
+						Path:  "",
+						Mode:  0666,
+						Size:  29,
+						Mtime: time.Now(),
+					},
+					chunkSize: 8,
+				},
+			},
 			want: "lan9FromBellLabsheap01234567\n",
 		},
 		{
 			rcv: Receiver{
 				Root: "",
-				SrcFiles: []ReceiverSrcFile{
-					{
-						SrcFile: SrcFile{
-							Path:  "",
-							Mode:  0666,
-							Size:  8,
-							Mtime: time.Now(),
-						},
-						chunkSize: 8,
-					},
-				},
 				Dec: createFakeDecoder(
 					LocalBlockType,
 					LocalBlock{
@@ -523,12 +511,23 @@ func TestBuilder(t *testing.T) {
 					csum("SOH\nsinh"),
 				),
 			},
+			srcFiles: []ReceiverSrcFile{
+				{
+					SrcFile: SrcFile{
+						Path:  "",
+						Mode:  0666,
+						Size:  8,
+						Mtime: time.Now(),
+					},
+					chunkSize: 8,
+				},
+			},
 			want: "SOH\nsinh",
 		},
 	}
 	for _, tt := range tests {
 		var b bytes.Buffer
-		err := tt.rcv.merge(&tt.rcv.SrcFiles[0], strings.NewReader(orig), &b)
+		err := tt.rcv.merge(&tt.srcFiles[0], strings.NewReader(orig), &b)
 		if err != nil {
 			t.Error(err)
 		}
@@ -578,19 +577,6 @@ func TestHandshake(t *testing.T) {
 	}
 	if !reflect.DeepEqual(&got, want) {
 		t.Fatalf("Handshake.WriteTo(...) = %#v, want %#v", got, want)
-	}
-}
-
-func TestWalk(t *testing.T) {
-	err := filepath.Walk("/tmp/foo/reg", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		t.Errorf("path: %s", path)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 

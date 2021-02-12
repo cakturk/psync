@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -26,6 +27,7 @@ var (
 
 func main() {
 	flag.Parse()
+	log.SetOutput(ioutil.Discard)
 	var s psync.Sender
 	_ = s
 	if flag.NArg() < 1 {
@@ -95,7 +97,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 		return nil
 	}
 	defer watcher.Close()
-	if err = watchRecursive(watcher, root); err != nil {
+	if err = watchDir(watcher, root); err != nil {
 		return err
 	}
 	for {
@@ -104,7 +106,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 			if !ok {
 				return nil
 			}
-			log.Println("event:", event)
+			fmt.Println("event:", event)
 			switch event.Op {
 			case fsnotify.Write, fsnotify.Chmod:
 				sl, err := lis.AddSrcFile(nil, event.Name)
@@ -114,10 +116,10 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 				if err := cli.sync(sl, false); err != nil {
 					return err
 				}
-				log.Print("write|modify:", event, sl)
+				fmt.Println("write|modify:", event, sl)
 			case fsnotify.Create:
 				var sl []psync.SenderSrcFile
-				err = watchRecursiveFn(watcher, event.Name, func(path string) {
+				err = watchDirFn(watcher, event.Name, func(path string) {
 					// log.Printf("cb: %s", path)
 					sl, err = lis.AddSrcFile(sl, path)
 					if err != nil {
@@ -130,7 +132,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 				if err := cli.sync(sl, false); err != nil {
 					return err
 				}
-				log.Print("create:", event, s, sl)
+				fmt.Println("create:", event, s, sl)
 			case fsnotify.Remove:
 				s, err := lis.List()
 				if err != nil {
@@ -142,7 +144,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 				if err != nil {
 					return err
 				}
-				log.Print("remove:", event, s)
+				fmt.Println("remove:", event, s)
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -161,9 +163,6 @@ type client struct {
 }
 
 func (c *client) sync(list []psync.SenderSrcFile, delete bool) error {
-	log.Printf("sync: 0")
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	log.Printf("sync: 1")
 	err := psync.SendSrcFileList(c.enc, list, delete)
 	if err != nil {
@@ -181,7 +180,14 @@ func (c *client) sync(list []psync.SenderSrcFile, delete bool) error {
 	}
 	log.Printf("sync: 3")
 	log.Printf("%d file(s) seems to have changed", n)
-	return c.sender.SendBlockDescList(list)
+	err = c.sender.SendBlockDescList(list)
+	// time.Sleep(1 * time.Second)
+	var ack uint32
+	if err := c.dec.Decode(&ack); err != nil {
+		fmt.Printf("failed to recv ack\n")
+	}
+	fmt.Printf("recv'd ack: %x\n", ack)
+	return err
 }
 
 func die(code int, format string, a ...interface{}) {
@@ -194,7 +200,7 @@ type encWriter struct {
 	psync.Encoder
 }
 
-func watchRecursiveFn(watcher *fsnotify.Watcher, root string, fn func(path string)) error {
+func watchDirFn(watcher *fsnotify.Watcher, root string, fn func(path string)) error {
 	err := filepath.Walk(root, func(walkPath string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -214,6 +220,6 @@ func watchRecursiveFn(watcher *fsnotify.Watcher, root string, fn func(path strin
 	return err
 }
 
-func watchRecursive(watcher *fsnotify.Watcher, root string) error {
-	return watchRecursiveFn(watcher, root, nil)
+func watchDir(watcher *fsnotify.Watcher, root string) error {
+	return watchDirFn(watcher, root, nil)
 }

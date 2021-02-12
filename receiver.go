@@ -23,14 +23,13 @@ type ReceiverSrcFile struct {
 }
 
 type Receiver struct {
-	Root     string
-	SrcFiles []ReceiverSrcFile
-	Dec      DecodeReader
+	Root string
+	Dec  DecodeReader
 }
 
-func (r *Receiver) BuildFiles(nrChangedFiles int) error {
+func (r *Receiver) BuildFiles(nrChangedFiles int, srcFiles []ReceiverSrcFile) error {
 	for i := 0; i < nrChangedFiles; i++ {
-		err := r.buildFile()
+		err := r.buildFile(srcFiles)
 		if err != nil {
 			return err
 		}
@@ -38,17 +37,17 @@ func (r *Receiver) BuildFiles(nrChangedFiles int) error {
 	return nil
 }
 
-func (r *Receiver) buildFile() error {
+func (r *Receiver) buildFile(srcFiles []ReceiverSrcFile) error {
 	var fd FileDesc
 	if err := r.Dec.Decode(&fd); err != nil {
 		return fmt.Errorf("buildfile: %w", err)
 	}
-	if fd.ID < 0 && fd.ID > len(r.SrcFiles) {
+	if fd.ID < 0 && fd.ID > len(srcFiles) {
 		return fmt.Errorf("there is no such file with id: %d", fd.ID)
 	}
 	// handle new file scenario do io.Copy or something like that
 	if fd.Typ == NewFile {
-		return r.create(&r.SrcFiles[fd.ID])
+		return r.create(&srcFiles[fd.ID])
 	}
 	if fd.Typ != PartialFile {
 		return fmt.Errorf("unrecognized file descriptor type: %v", fd.Typ)
@@ -57,12 +56,13 @@ func (r *Receiver) buildFile() error {
 	// time, this temporary file may end up in the receiver file list,
 	// which is not we want.
 	tmp, err := ioutil.TempFile(r.Root, "psync*.tmp")
+	// tmp, err := ioutil.TempFile("/tmp/cache", "psync*.tmp")
 	if err != nil {
 		return err
 	}
 	defer tmp.Close()
 	defer os.Remove(tmp.Name())
-	s := &r.SrcFiles[fd.ID]
+	s := &srcFiles[fd.ID]
 	f, err := os.Open(filepath.Join(r.Root, s.Path))
 	if err != nil {
 		return err
@@ -93,6 +93,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 		var typ BlockType
 		if err := r.Dec.Decode(&typ); err != nil {
 			if err == io.EOF {
+				log.Print("merge err: 0")
 				break
 			}
 			// runtime.Breakpoint()
@@ -103,6 +104,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			var lb LocalBlock
 			var b bytes.Buffer
 			if err := r.Dec.Decode(&lb); err != nil {
+				log.Print("merge err: 1")
 				// runtime.Breakpoint()
 				return err
 			}
@@ -113,6 +115,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			log.Printf("localblock: %+v n: %d, off: %d, data: %q", lb, n, off, b.Bytes())
 			off += n
 			if err != nil {
+				log.Print("merge err: 2")
 				return err
 			}
 		case RemoteBlockType:
@@ -133,6 +136,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			// file offset. However, this assumption could lead to
 			// subtle errors if we send descriptors out of order.
 			if off != rb.Off {
+				log.Print("merge err: 3")
 				return fmt.Errorf("remote bad file offset: want %d, got: %d", rb.Off, off)
 			}
 			n, err := io.Copy(
@@ -146,6 +150,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 			log.Printf("remoteblock: %+v n: %d, off: %d, data: %q", rb, n, off, b.Bytes())
 			off += n
 			if err != nil {
+				log.Print("merge err: 4")
 				// last block may be smaller than the others. So check
 				// the file size first to see if this is an error we can
 				// perfectly ignore.
@@ -160,6 +165,7 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 	}
 	// TODO: check exact file size before returning?
 	if off != s.Size {
+		log.Printf("unexpected EOF: off: %d, size: %d", off, s.Size)
 		return fmt.Errorf("unexpected EOF: off: %d, size: %d", off, s.Size)
 	}
 	var (
