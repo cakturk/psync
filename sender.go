@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -43,10 +42,8 @@ type Sender struct {
 }
 
 func (s *Sender) SendBlockDescList(files []SenderSrcFile) error {
-	log.Printf("sendOneBlockDesc: 0")
 	for i := range files {
 		sf := &files[i]
-		log.Print("sendOneBlockDesc:", sf.Path)
 		if sf.dst.Type != DstFileIdentical && !sf.Mode.IsDir() {
 			err := s.sendOneBlockDesc(i, sf)
 			if err != nil {
@@ -97,21 +94,17 @@ func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc EncodeWriter) err
 		lastBlockSize: e.dst.LastChunkSize(),
 	}
 	enc.Encode(FileDesc{ID: id, Typ: PartialFile})
-	log.Printf("chunkSize: %d", chunkSize)
 Outer:
 	for {
 		var n int64
 		// fill in the buffer
 		rh.Reset()
 		n, err = io.CopyN(rh, &cr, chunkSize)
-		log.Printf("yukari: %d, %v", n, err)
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("0 break: %d", cr.HeadLen())
 				return err
 			}
 			if n == 0 {
-				log.Printf("1 break: %d", cr.HeadLen())
 				break
 			}
 		}
@@ -120,11 +113,9 @@ Outer:
 			mh.Reset()
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Csum) {
-				log.Printf("blocks matched0: h: %q, t: %q", cr.HeadPeek(), cr.TailPeek())
 				if cr.HeadLen() > 0 {
 					err = ben.sendLocalBlock()
 					if err != nil {
-						log.Printf("sendLocalBlock err0: %q", cr.HeadLen())
 						return err
 					}
 				}
@@ -136,7 +127,6 @@ Outer:
 			c, err := cr.ReadByte()
 			if err != nil {
 				if err == io.EOF {
-					log.Printf("ReadByte reached EOF: %q", cr.HeadPeek())
 					break Outer
 				}
 				return fmt.Errorf("ReadByte: %w", err)
@@ -150,31 +140,23 @@ Outer:
 			io.CopyN(mh, cr.Tail(), chunkSize)
 			if bytes.Equal(mh.Sum(nil), ch.Csum) {
 				// block matched, send head bytes at first
-				log.Printf("blocks matched1: i: %d, h: %q, t: %q, ", i, cr.HeadPeek(), cr.TailPeek())
 				if cr.HeadLen() > 0 {
 					err = ben.sendLocalBlock()
 					if err != nil {
-						log.Printf("sendLocalBlock err1: %q", cr.HeadLen())
 						return err
 					}
 				}
 				ben.sendRemoteBlock(ch.id)
-				fmt.Println("continue Outer")
 				continue Outer
 			}
 		}
-		log.Printf("head alt0: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 		err = ben.sendLocalBlock()
 		if err != nil {
-			log.Printf("sendLocalBlock err2: %q", cr.HeadLen())
 			return err
 		}
-		log.Printf("head alt1: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 	}
-	log.Printf("prologue point: head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 	err = ben.flush()
 	if err != nil {
-		log.Printf("flush: %d", cr.HeadLen())
 		return err
 	}
 	err = enc.Encode(FileSum)
@@ -233,10 +215,6 @@ func (d *blockEncoder) sendLocalBlock() error {
 	}
 	var b bytes.Buffer
 	n, err := io.Copy(d.enc, io.TeeReader(d.r.Head(), &b))
-	log.Printf(
-		"sendLocalBlock: size: %d, off: %d, data: %q",
-		hlen, d.off, b.Bytes(),
-	)
 	d.off += n
 	return err
 }
@@ -279,10 +257,6 @@ func (d *blockEncoder) flushReuseChunks() error {
 		return nil
 	}
 	numChunks := prevID - d.firstID + 1
-	log.Printf(
-		"flushReuseChunks: numChunks: %d, prevID: %d, d.firstID: %d, d.off: %d",
-		numChunks, prevID, d.firstID, d.off,
-	)
 	err := d.enc.Encode(RemoteBlockType)
 	if err != nil {
 		return nil
@@ -320,10 +294,6 @@ func (d *blockEncoder) flush() error {
 	}
 	var b bytes.Buffer
 	n, err := io.Copy(d.enc, io.TeeReader(d.r.Buffered(), &b))
-	log.Printf(
-		"flush: localblock: size: %d, off: %d, sent: %d data: %q",
-		blen, d.off, n, b.Bytes(),
-	)
 	d.off += n
 	return err
 }
