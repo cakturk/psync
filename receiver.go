@@ -88,7 +88,8 @@ func (r *Receiver) merge(s *ReceiverSrcFile, rd io.ReaderAt, tmp io.Writer) erro
 	defer fb.Close()
 	sum := md5.New()
 	tmp = io.MultiWriter(tmp, sum, fb)
-	var off int64
+	var off, remaining int64
+	_ = remaining
 	for off < s.Size {
 		var typ BlockType
 		if err := r.Dec.Decode(&typ); err != nil {

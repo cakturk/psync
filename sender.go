@@ -3,6 +3,7 @@ package psync
 import (
 	"bytes"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -92,7 +93,8 @@ func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc EncodeWriter) err
 	ben := blockEncoder{
 		enc:           enc,
 		r:             &cr,
-		bsize:         chunkSize,
+		blockSize:     chunkSize,
+		remaining:     e.Size,
 		lastBlockID:   e.dst.LastChunkID(),
 		lastBlockSize: e.dst.LastChunkSize(),
 	}
@@ -166,7 +168,7 @@ Outer:
 		log.Printf("head alt0: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 		err = ben.sendLocalBlock()
 		if err != nil {
-			log.Printf("sendLocalBlock err2: %q", cr.HeadLen())
+			log.Printf("sendLocalBlock err2: %d, err: %v", cr.HeadLen(), err)
 			return err
 		}
 		log.Printf("head alt1: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
@@ -174,8 +176,10 @@ Outer:
 	log.Printf("prologue point: head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 	err = ben.flush()
 	if err != nil {
-		log.Printf("flush: %d", cr.HeadLen())
-		return err
+		log.Printf("flush: %d, err: %v", cr.HeadLen(), err)
+		if err != errNoSpaceLeft {
+			return err
+		}
 	}
 	err = enc.Encode(FileSum)
 	if err != nil {
@@ -189,9 +193,11 @@ Outer:
 }
 
 type blockEncoder struct {
-	enc        EncodeWriter
-	r          *Bring
-	bsize, off int64
+	enc            EncodeWriter
+	r              *Bring
+	blockSize, off int64
+
+	remaining int64
 
 	lastBlockID   int
 	lastBlockSize int64
@@ -204,12 +210,31 @@ type blockEncoder struct {
 	contiguousBsize int64
 }
 
-func (d *blockEncoder) findBlockSize(id int) int64 {
-	if id == d.lastBlockID {
-		return d.lastBlockSize
+func min(a, b int64) int64 {
+	if a < b {
+		return a
 	}
-	return d.bsize
+	return b
 }
+
+func (d *blockEncoder) getRemoteBlockSize(id int) int64 {
+	if d.remaining <= 0 {
+		return 0
+	}
+	if id == d.lastBlockID {
+		return min(d.lastBlockSize, d.remaining)
+	}
+	return min(d.blockSize, d.remaining)
+}
+
+func (d *blockEncoder) getLocalBlockSize(n int64) int64 {
+	if d.remaining <= 0 {
+		return 0
+	}
+	return min(n, d.remaining)
+}
+
+var errNoSpaceLeft = errors.New("blockEncoder: no space left")
 
 // TODO: Occasionally tries to send 1-byte blobs.
 func (d *blockEncoder) sendLocalBlock() error {
@@ -219,11 +244,14 @@ func (d *blockEncoder) sendLocalBlock() error {
 			return err
 		}
 	}
+	var hlen int64
+	if hlen = d.getLocalBlockSize(d.r.HeadLen()); hlen <= 0 {
+		return errNoSpaceLeft
+	}
 	err := d.enc.Encode(LocalBlockType)
 	if err != nil {
 		return err
 	}
-	hlen := d.r.HeadLen()
 	err = d.enc.Encode(LocalBlock{
 		Size: hlen,
 		Off:  d.off,
@@ -232,12 +260,13 @@ func (d *blockEncoder) sendLocalBlock() error {
 		return err
 	}
 	var b bytes.Buffer
-	n, err := io.Copy(d.enc, io.TeeReader(d.r.Head(), &b))
+	n, err := io.CopyN(d.enc, io.TeeReader(d.r.Head(), &b), hlen)
 	log.Printf(
 		"sendLocalBlock: size: %d, off: %d, data: %q",
 		hlen, d.off, b.Bytes(),
 	)
 	d.off += n
+	d.remaining -= n
 	return err
 }
 
@@ -253,9 +282,15 @@ func (d *blockEncoder) setPrevID(id int) { d.previousID = id + 1 }
 func (d *blockEncoder) resetPrevID()     { d.setPrevID(-1) }
 
 func (d *blockEncoder) sendRemoteBlock(id int) error {
-	bsize := d.findBlockSize(id)
-	d.r.Skip(int(bsize))
 	prevID, set := d.prevID()
+	bsize := d.getRemoteBlockSize(id)
+	if bsize <= 0 {
+		if set {
+			return d.flushReuseChunks()
+		}
+		return errNoSpaceLeft
+	}
+	d.r.Skip(int(bsize))
 	if !set {
 		d.setPrevID(id)
 		d.firstID = id
@@ -269,6 +304,7 @@ func (d *blockEncoder) sendRemoteBlock(id int) error {
 		d.firstID = id
 	}
 	d.contiguousBsize += bsize
+	d.remaining -= bsize
 	d.setPrevID(id)
 	return nil
 }
@@ -303,14 +339,14 @@ func (d *blockEncoder) flush() error {
 	if err != nil {
 		return err
 	}
-	if d.r.BufferedLen() <= 0 {
-		return nil
+	var blen int64
+	if blen = d.getLocalBlockSize(d.r.BufferedLen()); blen <= 0 {
+		return errNoSpaceLeft
 	}
 	err = d.enc.Encode(LocalBlockType)
 	if err != nil {
 		return err
 	}
-	blen := d.r.BufferedLen()
 	err = d.enc.Encode(LocalBlock{
 		Size: blen,
 		Off:  d.off,
@@ -319,7 +355,7 @@ func (d *blockEncoder) flush() error {
 		return err
 	}
 	var b bytes.Buffer
-	n, err := io.Copy(d.enc, io.TeeReader(d.r.Buffered(), &b))
+	n, err := io.CopyN(d.enc, io.TeeReader(d.r.Buffered(), &b), blen)
 	log.Printf(
 		"flush: localblock: size: %d, off: %d, sent: %d data: %q",
 		blen, d.off, n, b.Bytes(),

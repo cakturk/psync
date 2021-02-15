@@ -260,7 +260,7 @@ func TestDescEnc(t *testing.T) {
 			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(4),
-				bsize:         4,
+				blockSize:         4,
 				lastBlockID:   0,
 				lastBlockSize: 4,
 			},
@@ -283,7 +283,7 @@ func TestDescEnc(t *testing.T) {
 			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(8),
-				bsize:         8,
+				blockSize:         8,
 				lastBlockID:   3,
 				lastBlockSize: 5,
 			},
@@ -307,7 +307,7 @@ func TestDescEnc(t *testing.T) {
 			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(8),
-				bsize:         8,
+				blockSize:         8,
 				lastBlockID:   5,
 				lastBlockSize: 5,
 			},

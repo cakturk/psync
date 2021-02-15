@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -27,7 +26,7 @@ var (
 
 func main() {
 	flag.Parse()
-	log.SetOutput(ioutil.Discard)
+	// log.SetOutput(ioutil.Discard)
 	var s psync.Sender
 	_ = s
 	if flag.NArg() < 1 {
@@ -180,7 +179,9 @@ func (c *client) sync(list []psync.SenderSrcFile, delete bool) error {
 	}
 	log.Printf("sync: 3")
 	log.Printf("%d file(s) seems to have changed", n)
-	err = c.sender.SendBlockDescList(list)
+	if err = c.sender.SendBlockDescList(list); err != nil {
+		return err
+	}
 	// time.Sleep(1 * time.Second)
 	var ack uint32
 	if err := c.dec.Decode(&ack); err != nil {
