@@ -94,7 +94,7 @@ func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc EncodeWriter) err
 		enc:           enc,
 		r:             &cr,
 		blockSize:     chunkSize,
-		remaining:     e.Size,
+		remainder:     e.Size,
 		lastBlockID:   e.dst.LastChunkID(),
 		lastBlockSize: e.dst.LastChunkSize(),
 	}
@@ -181,6 +181,7 @@ Outer:
 			return err
 		}
 	}
+	log.Printf("written: %d bytes, remainder: %d, size: %d", ben.off, ben.remainder, e.Size)
 	err = enc.Encode(FileSum)
 	if err != nil {
 		return err
@@ -197,7 +198,7 @@ type blockEncoder struct {
 	r              *Bring
 	blockSize, off int64
 
-	remaining int64
+	remainder int64
 
 	lastBlockID   int
 	lastBlockSize int64
@@ -218,20 +219,20 @@ func min(a, b int64) int64 {
 }
 
 func (d *blockEncoder) getRemoteBlockSize(id int) int64 {
-	if d.remaining <= 0 {
+	if d.remainder <= 0 {
 		return 0
 	}
 	if id == d.lastBlockID {
-		return min(d.lastBlockSize, d.remaining)
+		return min(d.lastBlockSize, d.remainder)
 	}
-	return min(d.blockSize, d.remaining)
+	return min(d.blockSize, d.remainder)
 }
 
 func (d *blockEncoder) getLocalBlockSize(n int64) int64 {
-	if d.remaining <= 0 {
+	if d.remainder <= 0 {
 		return 0
 	}
-	return min(n, d.remaining)
+	return min(n, d.remainder)
 }
 
 var errNoSpaceLeft = errors.New("blockEncoder: no space left")
@@ -266,7 +267,7 @@ func (d *blockEncoder) sendLocalBlock() error {
 		hlen, d.off, b.Bytes(),
 	)
 	d.off += n
-	d.remaining -= n
+	d.remainder -= n
 	return err
 }
 
@@ -291,6 +292,8 @@ func (d *blockEncoder) sendRemoteBlock(id int) error {
 		return errNoSpaceLeft
 	}
 	d.r.Skip(int(bsize))
+	d.remainder -= bsize
+	log.Printf("remainder: %d bytes left", d.remainder)
 	if !set {
 		d.setPrevID(id)
 		d.firstID = id
@@ -304,7 +307,6 @@ func (d *blockEncoder) sendRemoteBlock(id int) error {
 		d.firstID = id
 	}
 	d.contiguousBsize += bsize
-	d.remaining -= bsize
 	d.setPrevID(id)
 	return nil
 }
@@ -316,8 +318,8 @@ func (d *blockEncoder) flushReuseChunks() error {
 	}
 	numChunks := prevID - d.firstID + 1
 	log.Printf(
-		"flushReuseChunks: numChunks: %d, prevID: %d, d.firstID: %d, d.off: %d",
-		numChunks, prevID, d.firstID, d.off,
+		"flushReuseChunks: numChunks: %d, prevID: %d, d.firstID: %d, d.off: %d, remain: %d",
+		numChunks, prevID, d.firstID, d.off, d.remainder,
 	)
 	err := d.enc.Encode(RemoteBlockType)
 	if err != nil {
@@ -361,6 +363,7 @@ func (d *blockEncoder) flush() error {
 		blen, d.off, n, b.Bytes(),
 	)
 	d.off += n
+	d.remainder -= n
 	return err
 }
 
@@ -411,6 +414,7 @@ func (s *SrcFileLister) addSrcFile(list []SenderSrcFile, path string, info os.Fi
 	if err != nil {
 		return list, err
 	}
+	log.Print("addSrcFile:", size)
 	list = append(list, SenderSrcFile{
 		SrcFile: SrcFile{
 			Path:  rel,

@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/cakturk/psync"
@@ -100,6 +99,18 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 		return err
 	}
 	for {
+		if err = watchLoop(&cli, &lis, watcher); err != nil {
+			if os.IsNotExist(err) {
+				log.Printf("file not exist cont")
+				continue
+			}
+			return fmt.Errorf("watchloop: %w", err)
+		}
+	}
+}
+
+func watchLoop(cli *client, lis *psync.SrcFileLister, watcher *fsnotify.Watcher) error {
+	for {
 		select {
 		case event, ok := <-watcher.Events:
 			if !ok {
@@ -118,6 +129,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 				fmt.Println("write|modify:", event, sl)
 			case fsnotify.Create:
 				var sl []psync.SenderSrcFile
+				var err error
 				err = watchDirFn(watcher, event.Name, func(path string) {
 					// log.Printf("cb: %s", path)
 					sl, err = lis.AddSrcFile(sl, path)
@@ -131,7 +143,7 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 				if err := cli.sync(sl, false); err != nil {
 					return err
 				}
-				fmt.Println("create:", event, s, sl)
+				fmt.Println("create:", event, sl)
 			case fsnotify.Remove:
 				s, err := lis.List()
 				if err != nil {
@@ -155,7 +167,6 @@ func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watc
 }
 
 type client struct {
-	mu     sync.Mutex
 	sender psync.Sender
 	enc    psync.Encoder
 	dec    psync.Decoder
@@ -163,6 +174,9 @@ type client struct {
 
 func (c *client) sync(list []psync.SenderSrcFile, delete bool) error {
 	log.Printf("sync: 1")
+	if len(list) == 0 {
+		return nil
+	}
 	err := psync.SendSrcFileList(c.enc, list, delete)
 	if err != nil {
 		return err
