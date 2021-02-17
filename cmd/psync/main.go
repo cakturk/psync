@@ -173,10 +173,11 @@ type client struct {
 }
 
 func (c *client) sync(list []psync.SenderSrcFile, delete bool) error {
-	log.Printf("sync: 1")
-	if len(list) == 0 {
+	log.Printf("sync: 0: del: %v, len: %v", delete, len(list))
+	if !delete && len(list) == 0 {
 		return nil
 	}
+	log.Printf("sync: 1")
 	err := psync.SendSrcFileList(c.enc, list, delete)
 	if err != nil {
 		return err

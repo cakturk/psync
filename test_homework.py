@@ -199,9 +199,11 @@ class TestBasic(TestCase):
 
     def test_single_file_change_and_remove(self):
         spit(join(self.cpath, 'newfile.txt'), 'contents')
+        sleep(1.0)
         assert_paths_in_sync(self.cpath, self.spath)
-
+        sleep(1.0)
         remove(join(self.cpath, 'newfile.txt'))
+        sleep(1.0)
         assert_paths_in_sync(self.cpath, self.spath)
 
     def test_add_empty_dir(self):

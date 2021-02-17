@@ -103,10 +103,12 @@ type session struct {
 
 func (c *session) syncLoop() error {
 	for {
+		log.Printf("sb: 0")
 		rs, delete, err := psync.RecvSrcFileList(c.dec)
 		if err != nil {
 			return fmt.Errorf("src file list: %w", err)
 		}
+		log.Printf("sb: 1")
 		// First remove extraneous files
 		if delete {
 			if err := psync.DeleteExtra(rs, c.root); err != nil {
@@ -115,6 +117,7 @@ func (c *session) syncLoop() error {
 		}
 		// TODO: this feels a little tricky. so find a better
 		// way to sync empty directories.
+		log.Printf("sb: 2")
 		if err := psync.MkDirs(rs, c.root); err != nil {
 			return err
 		}
@@ -128,10 +131,11 @@ func (c *session) syncLoop() error {
 		}
 		log.Printf("%d file(s) seems to have changed", n)
 		err = c.rcv.BuildFiles(n, rs)
-		// if err != nil {
-		// 	return fmt.Errorf("build: %w", err)
-		// }
+		if err != nil {
+			return fmt.Errorf("build: %w", err)
+		}
 		if err := c.enc.Encode(uint32(0x1a2b)); err != nil {
+			return err
 		}
 	}
 }

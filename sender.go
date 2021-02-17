@@ -84,8 +84,6 @@ func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc EncodeWriter) err
 		return err
 	}
 	chunkSize := int64(e.dst.ChunkSize)
-	rh := adler32.New()
-	mh := md5.New()
 	sum := md5.New()
 	r = io.TeeReader(r, sum)
 	cr := NewBring(r, int(chunkSize))
@@ -100,12 +98,40 @@ func sendBlockDescs(r io.Reader, id int, e *SenderSrcFile, enc EncodeWriter) err
 	}
 	enc.Encode(FileDesc{ID: id, Typ: PartialFile})
 	log.Printf("chunkSize: %d", chunkSize)
+	err = blockDescLoop(&ben, &cr, e)
+	if err != nil {
+		if !errors.Is(err, errNoSpaceLeft) {
+			return err
+		}
+		log.Printf("run into errNoSpaceLeft")
+		if err := ben.flushReuseChunks(); err != nil {
+			return err
+		}
+	}
+	log.Printf("prologue point: head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
+	log.Printf("written: %d bytes, remainder: %d, size: %d", ben.off, ben.remainder, e.Size)
+	err = enc.Encode(FileSum)
+	if err != nil {
+		return err
+	}
+	err = enc.Encode(sum.Sum(nil))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func blockDescLoop(ben *blockEncoder, cr *Bring, e *SenderSrcFile) error {
+	chunkSize := int64(e.dst.ChunkSize)
+	rh := adler32.New()
+	mh := md5.New()
+	var err error
 Outer:
 	for {
 		var n int64
 		// fill in the buffer
 		rh.Reset()
-		n, err = io.CopyN(rh, &cr, chunkSize)
+		n, err = io.CopyN(rh, cr, chunkSize)
 		log.Printf("yukari: %d, %v", n, err)
 		if err != nil {
 			if err != io.EOF {
@@ -173,22 +199,12 @@ Outer:
 		}
 		log.Printf("head alt1: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 	}
-	log.Printf("prologue point: head: %q, tail: %q", cr.HeadPeek(), cr.TailPeek())
 	err = ben.flush()
 	if err != nil {
 		log.Printf("flush: %d, err: %v", cr.HeadLen(), err)
 		if err != errNoSpaceLeft {
 			return err
 		}
-	}
-	log.Printf("written: %d bytes, remainder: %d, size: %d", ben.off, ben.remainder, e.Size)
-	err = enc.Encode(FileSum)
-	if err != nil {
-		return err
-	}
-	err = enc.Encode(sum.Sum(nil))
-	if err != nil {
-		return err
 	}
 	return nil
 }
@@ -341,8 +357,11 @@ func (d *blockEncoder) flush() error {
 	if err != nil {
 		return err
 	}
-	var blen int64
-	if blen = d.getLocalBlockSize(d.r.BufferedLen()); blen <= 0 {
+	blen := d.r.BufferedLen()
+	if blen <= 0 {
+		return nil
+	}
+	if blen = d.getLocalBlockSize(blen); blen <= 0 {
 		return errNoSpaceLeft
 	}
 	err = d.enc.Encode(LocalBlockType)
@@ -414,7 +433,7 @@ func (s *SrcFileLister) addSrcFile(list []SenderSrcFile, path string, info os.Fi
 	if err != nil {
 		return list, err
 	}
-	log.Print("addSrcFile:", size)
+	log.Printf("addSrcFile (%s): %d", info.Name(), size)
 	list = append(list, SenderSrcFile{
 		SrcFile: SrcFile{
 			Path:  rel,
@@ -440,6 +459,7 @@ func SendSrcFileList(enc Encoder, list []SenderSrcFile, delete bool) error {
 		Type:        SenderFileList,
 		DeleteExtra: delete,
 	}
+	log.Printf("sent hdr: %#v", hdr)
 	err := enc.Encode(&hdr)
 	if err != nil {
 		return fmt.Errorf("sending src list header failed: %w", err)
@@ -456,6 +476,7 @@ func SendSrcFileList(enc Encoder, list []SenderSrcFile, delete bool) error {
 func RecvDstFileList(dec Decoder, list []SenderSrcFile) (int, error) {
 	var nrChanged int
 	var hdr FileListHdr
+	log.Printf("ptr 0")
 	err := dec.Decode(&hdr)
 	if err != nil {
 		return 0, fmt.Errorf("failed to recv dst header: %w", err)
@@ -463,7 +484,9 @@ func RecvDstFileList(dec Decoder, list []SenderSrcFile) (int, error) {
 	if hdr.Type != ReceiverFileList {
 		return 0, fmt.Errorf("sender: invalid header type: %v", hdr.Type)
 	}
+	log.Printf("ptr 1")
 	for i := 0; i < hdr.NumFiles; i++ {
+		log.Printf("ptr 2")
 		err := dec.Decode(&list[i].dst.DstFile)
 		if err != nil {
 			return nrChanged, fmt.Errorf("failed to recv dst list: %w", err)
