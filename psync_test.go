@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"encoding/gob"
 	"encoding/hex"
+	"fmt"
 	stdadler32 "hash/adler32"
 	"io"
 	"reflect"
@@ -162,7 +163,7 @@ func TestMergeDesc(t *testing.T) {
 		// {0x69, 0x66, 0x69, 0x65, 0x64, 0x2d, 0x6c, 0x61, 0xa, 0x50}
 		[]byte("ified-la\nP"),
 
-		RemoteBlockType, RemoteBlock{ChunkID: 5, NrChunks: 3, Off: 42},
+		RemoteBlockType, RemoteBlock{ChunkID: 5, NrChunks: 2, Off: 42},
 
 		FileSum, sum[:],
 	}
@@ -239,32 +240,41 @@ func TestDescEnc(t *testing.T) {
 		ret := NewBring(&buf, blockSize)
 		return &ret
 	}
-	sendLocalBlock := func(blobSize int64) func(*blockEncoder) {
-		return func(d *blockEncoder) {
-			d.sendLocalBlock()
+	sendLocalBlock := func(blobSize int64) func(*blockEncoder) error {
+		return func(d *blockEncoder) error {
+			if err := d.sendLocalBlock(); err != nil {
+				return err
+			}
 			d.off += blobSize
+			return nil
 		}
 	}
-	sendRemoteBlock := func(id int) func(*blockEncoder) {
-		return func(d *blockEncoder) {
-			d.sendRemoteBlock(id)
+	sendRemoteBlock := func(id int) func(*blockEncoder) error {
+		return func(d *blockEncoder) error {
+			if err := d.sendRemoteBlock(id); err != nil {
+				return err
+			}
+			return nil
 		}
 	}
-	flush := func() func(*blockEncoder) { return func(d *blockEncoder) { d.flush() } }
+	flush := func() func(*blockEncoder) error {
+		return func(d *blockEncoder) error { return d.flush() }
+	}
 	var tests = []struct {
 		in    blockEncoder
-		calls []func(*blockEncoder)
+		calls []func(*blockEncoder) error
 		want  *mergeDscEnc
 	}{
 		{
 			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(4),
-				blockSize:         4,
+				blockSize:     4,
 				lastBlockID:   0,
+				remainder:     100,
 				lastBlockSize: 4,
 			},
-			calls: []func(d *blockEncoder){
+			calls: []func(d *blockEncoder) error{
 				sendRemoteBlock(2),
 				sendRemoteBlock(3),
 				sendRemoteBlock(4),
@@ -283,11 +293,11 @@ func TestDescEnc(t *testing.T) {
 			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(8),
-				blockSize:         8,
+				blockSize:     8,
 				lastBlockID:   3,
 				lastBlockSize: 5,
 			},
-			calls: []func(d *blockEncoder){
+			calls: []func(d *blockEncoder) error{
 				sendRemoteBlock(1),
 				sendRemoteBlock(2),
 				sendRemoteBlock(3),
@@ -307,11 +317,11 @@ func TestDescEnc(t *testing.T) {
 			in: blockEncoder{
 				enc:           &mergeDscEnc{},
 				r:             newBring(8),
-				blockSize:         8,
+				blockSize:     8,
 				lastBlockID:   5,
 				lastBlockSize: 5,
 			},
-			calls: []func(d *blockEncoder){
+			calls: []func(d *blockEncoder) error{
 				sendLocalBlock(3),
 				sendRemoteBlock(0),
 				sendRemoteBlock(1),
@@ -332,12 +342,22 @@ func TestDescEnc(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
-		for _, fn := range tt.calls {
-			fn(&tt.in)
-		}
-		if diff := cmp.Diff(tt.in.enc, tt.want); diff != "" {
-			t.Fatalf("mismatch (-got, +want):\n%s", diff)
+	for i, tt := range tests {
+		i := i
+		tt := tt
+		ok := t.Run(fmt.Sprintf("test-%d", i), func(t *testing.T) {
+			for _, fn := range tt.calls {
+				if err := fn(&tt.in); err != nil {
+					t.Fatalf("call failed: %v\n%#v", err, tt.in)
+				}
+			}
+			if diff := cmp.Diff(tt.in.enc, tt.want); diff != "" {
+				t.Errorf("%#v", tt.in)
+				t.Fatalf("mismatch (-got, +want):\n%s", diff)
+			}
+		})
+		if !ok {
+			break
 		}
 	}
 }
