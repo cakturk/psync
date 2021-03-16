@@ -61,6 +61,13 @@ func main() {
 // ? receive some kind of exit code, which indicates wheter
 // the receiver was successful or not.
 func run(conn net.Conn, root string, allowEmptyDirs bool, watcher *fsnotify.Watcher) error {
+	if st, err := os.Stat(root); err != nil {
+		return err
+	} else {
+		if !st.IsDir() {
+			return fmt.Errorf("not a directory: %s", root)
+		}
+	}
 	defer conn.Close()
 	hs := psync.NewHandshake(1, psync.WireFormatGob, 0)
 	_, err := hs.WriteTo(conn)

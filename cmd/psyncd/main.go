@@ -45,6 +45,13 @@ func main() {
 }
 
 func run(l net.Listener, root string, blockSize int) error {
+	if st, err := os.Stat(root); err != nil {
+		return err
+	} else {
+		if !st.IsDir() {
+			return fmt.Errorf("not a directory: %s", root)
+		}
+	}
 	defer l.Close()
 	for {
 		c, err := l.Accept()
