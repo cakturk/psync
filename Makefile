@@ -19,7 +19,7 @@ build-server:
 	@go build -o psyncd ./cmd/psyncd
 
 # Run all tests
-test: test-unit test-integration
+test: test-unit test-integration test-monitor-stress
 
 # Run unit tests
 test-unit:
@@ -43,6 +43,16 @@ test-race:
 test-integration: build
 	@echo "Running integration tests..."
 	@./test-integration.sh
+
+# Run monitor mode stress test
+test-monitor-stress: build
+	@echo "Running monitor mode stress test..."
+	@./test-monitor-stress.sh
+
+# Run monitor mode stress test with custom duration
+test-monitor-stress-long: build
+	@echo "Running extended monitor mode stress test (60s)..."
+	@./test-monitor-stress.sh -d 60 -w 8
 
 # Format code
 fmt:
@@ -87,19 +97,21 @@ deps:
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  make build              - Build both psync and psyncd binaries"
-	@echo "  make build-client       - Build only psync client"
-	@echo "  make build-server       - Build only psyncd server"
-	@echo "  make test               - Run all tests (unit + integration)"
-	@echo "  make test-unit          - Run unit tests"
-	@echo "  make test-integration   - Run integration test suite"
-	@echo "  make test-coverage      - Run tests with coverage report"
-	@echo "  make test-race          - Run tests with race detector"
-	@echo "  make fmt                - Format code with gofmt"
-	@echo "  make vet                - Run go vet"
-	@echo "  make check              - Run fmt, vet, and unit tests"
-	@echo "  make generate           - Generate type string methods"
-	@echo "  make clean              - Remove build artifacts"
-	@echo "  make install            - Install binaries to GOPATH/bin"
-	@echo "  make deps               - Download and tidy dependencies"
-	@echo "  make help               - Show this help message"
+	@echo "  make build                  - Build both psync and psyncd binaries"
+	@echo "  make build-client           - Build only psync client"
+	@echo "  make build-server           - Build only psyncd server"
+	@echo "  make test                   - Run all tests (unit + integration + monitor)"
+	@echo "  make test-unit              - Run unit tests"
+	@echo "  make test-integration       - Run integration test suite"
+	@echo "  make test-monitor-stress    - Run monitor mode stress test (30s)"
+	@echo "  make test-monitor-stress-long - Run extended monitor stress (60s, 8 workers)"
+	@echo "  make test-coverage          - Run tests with coverage report"
+	@echo "  make test-race              - Run tests with race detector"
+	@echo "  make fmt                    - Format code with gofmt"
+	@echo "  make vet                    - Run go vet"
+	@echo "  make check                  - Run fmt, vet, and unit tests"
+	@echo "  make generate               - Generate type string methods"
+	@echo "  make clean                  - Remove build artifacts"
+	@echo "  make install                - Install binaries to GOPATH/bin"
+	@echo "  make deps                   - Download and tidy dependencies"
+	@echo "  make help                   - Show this help message"
