@@ -35,6 +35,7 @@ VERBOSE="${VERBOSE:-0}"              # Verbose output
 TEST_FAILED=0
 PSYNC_CRASHED=0
 PSYNC_HUNG=0
+FILES_SYNCED=0
 
 #############################################
 # Helper Functions
@@ -454,6 +455,9 @@ verify_final_state() {
 
     log_info "Source files: $source_count, Target files: $target_count"
 
+    # Store file count for summary
+    FILES_SYNCED=$target_count
+
     # After final sync, they should match
     if diff -r "$SOURCE_DIR" "$TARGET_DIR" >/dev/null 2>&1; then
         log_success "Final state: directories match perfectly"
@@ -476,6 +480,7 @@ print_summary() {
     echo "=========================================="
     echo "Duration:        ${DURATION}s"
     echo "Workers:         $CHURN_WORKERS"
+    echo "Files synced:    $FILES_SYNCED"
     echo "Crash detected:  $([ $PSYNC_CRASHED -eq 1 ] && echo 'YES' || echo 'NO')"
     echo "Hung on exit:    $([ $PSYNC_HUNG -eq 1 ] && echo 'YES' || echo 'NO')"
     echo "Test result:     $([ $TEST_FAILED -eq 0 ] && echo -e "${GREEN}PASS${NC}" || echo -e "${RED}FAIL${NC}")"
