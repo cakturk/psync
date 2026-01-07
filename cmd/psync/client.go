@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/gob"
 	"fmt"
 	"io"
@@ -100,6 +101,7 @@ func (c *Client) SyncWithConn(conn net.Conn) error {
 
 // RunMonitor starts filesystem monitoring and continuously syncs changes.
 // This is the production entry point for monitor mode.
+// It runs indefinitely until interrupted or an error occurs.
 func (c *Client) RunMonitor() error {
 	// Create watcher
 	watcher, err := fsnotify.NewWatcher()
@@ -113,13 +115,15 @@ func (c *Client) RunMonitor() error {
 		return net.DialTimeout(c.Proto, c.ServerAddr, connectTimeout)
 	}
 
-	return c.MonitorWithWatcher(watcher, connFactory)
+	// Use background context for production (runs until process exits)
+	return c.MonitorWithWatcher(context.Background(), watcher, connFactory)
 }
 
 // MonitorWithWatcher starts filesystem monitoring using the provided watcher and connection factory.
-// This method is designed for testing where you can inject a mock watcher or custom connection factory.
+// This method is designed for testing where you can inject a custom watcher or connection factory.
 // The watcher will NOT be closed by this method - the caller is responsible for cleanup.
-func (c *Client) MonitorWithWatcher(watcher *fsnotify.Watcher, connFactory func() (net.Conn, error)) error {
+// The context can be used to cancel monitoring gracefully.
+func (c *Client) MonitorWithWatcher(ctx context.Context, watcher *fsnotify.Watcher, connFactory func() (net.Conn, error)) error {
 	// Create connection for initial sync
 	conn, err := connFactory()
 	if err != nil {
@@ -173,11 +177,12 @@ func (c *Client) MonitorWithWatcher(watcher *fsnotify.Watcher, connFactory func(
 	}
 
 	// Start monitoring loop
-	return c.monitorLoop(watcher, cli, &lis)
+	return c.monitorLoop(ctx, watcher, cli, &lis)
 }
 
 // monitorLoop handles the filesystem event monitoring and sync triggering.
-func (c *Client) monitorLoop(watcher *fsnotify.Watcher, cli *syncClient, lis *psync.SrcFileLister) error {
+// It monitors until the context is cancelled or an error occurs.
+func (c *Client) monitorLoop(ctx context.Context, watcher *fsnotify.Watcher, cli *syncClient, lis *psync.SrcFileLister) error {
 	eventBatch := make(map[string]fsnotify.Op) // path -> last operation
 	ticker := time.NewTicker(coalesceDuration)
 	defer ticker.Stop()
@@ -186,6 +191,9 @@ func (c *Client) monitorLoop(watcher *fsnotify.Watcher, cli *syncClient, lis *ps
 
 	for {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
 		case event, ok := <-watcher.Events:
 			if !ok {
 				return nil
