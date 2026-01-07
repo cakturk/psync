@@ -503,6 +503,256 @@ func TestBinaryFileSync(t *testing.T) {
 	}
 }
 
+// TestFileDeleteSync tests deleting a file and syncing the deletion
+func TestFileDeleteSync(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create initial files
+	file1 := filepath.Join(sourceDir, "file1.txt")
+	file2 := filepath.Join(sourceDir, "file2.txt")
+	file3 := filepath.Join(sourceDir, "file3.txt")
+
+	if err := os.WriteFile(file1, []byte("content 1"), 0644); err != nil {
+		t.Fatalf("failed to create file1: %v", err)
+	}
+	if err := os.WriteFile(file2, []byte("content 2"), 0644); err != nil {
+		t.Fatalf("failed to create file2: %v", err)
+	}
+	if err := os.WriteFile(file3, []byte("content 3"), 0644); err != nil {
+		t.Fatalf("failed to create file3: %v", err)
+	}
+
+	// Initial sync
+	clientConn1, serverConn1 := net.Pipe()
+
+	serverErr1 := make(chan error, 1)
+	go func() {
+		serverErr1 <- runServerSide(t, serverConn1, targetDir, 512)
+	}()
+
+	if err := runClientSide(t, clientConn1, sourceDir, true); err != nil {
+		t.Fatalf("initial sync failed: %v", err)
+	}
+
+	if err := <-serverErr1; err != nil {
+		t.Fatalf("server failed on initial sync: %v", err)
+	}
+
+	// Verify all files exist in target
+	targetFile1 := filepath.Join(targetDir, "file1.txt")
+	targetFile2 := filepath.Join(targetDir, "file2.txt")
+	targetFile3 := filepath.Join(targetDir, "file3.txt")
+
+	if _, err := os.Stat(targetFile1); err != nil {
+		t.Errorf("file1 not synced: %v", err)
+	}
+	if _, err := os.Stat(targetFile2); err != nil {
+		t.Errorf("file2 not synced: %v", err)
+	}
+	if _, err := os.Stat(targetFile3); err != nil {
+		t.Errorf("file3 not synced: %v", err)
+	}
+
+	// Delete file2 from source
+	if err := os.Remove(file2); err != nil {
+		t.Fatalf("failed to delete file2: %v", err)
+	}
+
+	// Second sync with deletion enabled
+	clientConn2, serverConn2 := net.Pipe()
+
+	serverErr2 := make(chan error, 1)
+	go func() {
+		serverErr2 <- runServerSide(t, serverConn2, targetDir, 512)
+	}()
+
+	if err := runClientSide(t, clientConn2, sourceDir, true); err != nil {
+		t.Fatalf("deletion sync failed: %v", err)
+	}
+
+	if err := <-serverErr2; err != nil {
+		t.Fatalf("server failed on deletion sync: %v", err)
+	}
+
+	// Verify file2 is deleted from target but file1 and file3 remain
+	if _, err := os.Stat(targetFile1); err != nil {
+		t.Error("file1 should still exist")
+	}
+	if _, err := os.Stat(targetFile2); !os.IsNotExist(err) {
+		t.Error("file2 should be deleted from target")
+	}
+	if _, err := os.Stat(targetFile3); err != nil {
+		t.Error("file3 should still exist")
+	}
+}
+
+// TestFileTruncateSync tests truncating a file (making it smaller) and syncing
+func TestFileTruncateSync(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create initial file with content
+	testFile := filepath.Join(sourceDir, "test.txt")
+	initialContent := []byte("This is a long initial content that will be truncated later in the test")
+	if err := os.WriteFile(testFile, initialContent, 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Initial sync
+	clientConn1, serverConn1 := net.Pipe()
+
+	serverErr1 := make(chan error, 1)
+	go func() {
+		serverErr1 <- runServerSide(t, serverConn1, targetDir, 512)
+	}()
+
+	if err := runClientSide(t, clientConn1, sourceDir, true); err != nil {
+		t.Fatalf("initial sync failed: %v", err)
+	}
+
+	if err := <-serverErr1; err != nil {
+		t.Fatalf("server failed on initial sync: %v", err)
+	}
+
+	// Verify initial content in target
+	targetFile := filepath.Join(targetDir, "test.txt")
+	content, err := os.ReadFile(targetFile)
+	if err != nil {
+		t.Fatalf("failed to read target file: %v", err)
+	}
+
+	if diff := cmp.Diff(initialContent, content); diff != "" {
+		t.Errorf("initial content mismatch (-want +got):\n%s", diff)
+	}
+
+	// Truncate the file (make it much smaller)
+	truncatedContent := []byte("Short")
+	if err := os.WriteFile(testFile, truncatedContent, 0644); err != nil {
+		t.Fatalf("failed to truncate file: %v", err)
+	}
+
+	// Second sync - should handle truncation
+	clientConn2, serverConn2 := net.Pipe()
+
+	serverErr2 := make(chan error, 1)
+	go func() {
+		serverErr2 <- runServerSide(t, serverConn2, targetDir, 512)
+	}()
+
+	if err := runClientSide(t, clientConn2, sourceDir, true); err != nil {
+		t.Fatalf("truncation sync failed: %v", err)
+	}
+
+	if err := <-serverErr2; err != nil {
+		t.Fatalf("server failed on truncation sync: %v", err)
+	}
+
+	// Verify truncated content in target
+	content, err = os.ReadFile(targetFile)
+	if err != nil {
+		t.Fatalf("failed to read target file after truncation: %v", err)
+	}
+
+	if diff := cmp.Diff(truncatedContent, content); diff != "" {
+		t.Errorf("truncated content mismatch (-want +got):\n%s", diff)
+	}
+
+	// Verify size is correct (not the old size)
+	info, err := os.Stat(targetFile)
+	if err != nil {
+		t.Fatalf("failed to stat target file: %v", err)
+	}
+
+	if info.Size() != int64(len(truncatedContent)) {
+		t.Errorf("file size mismatch: got %d, want %d", info.Size(), len(truncatedContent))
+	}
+}
+
+// TestMultipleFileDeleteSync tests deleting multiple files in one sync
+func TestMultipleFileDeleteSync(t *testing.T) {
+	sourceDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create multiple files
+	files := map[string]string{
+		"keep1.txt":              "keep this 1",
+		"delete1.txt":            "delete this 1",
+		"keep2.txt":              "keep this 2",
+		"delete2.txt":            "delete this 2",
+		"subdir/keep3.txt":       "keep this 3",
+		"subdir/delete3.txt":     "delete this 3",
+	}
+
+	for path, content := range files {
+		fullPath := filepath.Join(sourceDir, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			t.Fatalf("failed to create dir for %s: %v", path, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			t.Fatalf("failed to create file %s: %v", path, err)
+		}
+	}
+
+	// Initial sync
+	clientConn1, serverConn1 := net.Pipe()
+
+	serverErr1 := make(chan error, 1)
+	go func() {
+		serverErr1 <- runServerSide(t, serverConn1, targetDir, 512)
+	}()
+
+	if err := runClientSide(t, clientConn1, sourceDir, true); err != nil {
+		t.Fatalf("initial sync failed: %v", err)
+	}
+
+	if err := <-serverErr1; err != nil {
+		t.Fatalf("server failed on initial sync: %v", err)
+	}
+
+	// Delete files from source
+	filesToDelete := []string{"delete1.txt", "delete2.txt", "subdir/delete3.txt"}
+	for _, path := range filesToDelete {
+		fullPath := filepath.Join(sourceDir, path)
+		if err := os.Remove(fullPath); err != nil {
+			t.Fatalf("failed to delete %s: %v", path, err)
+		}
+	}
+
+	// Second sync with deletions
+	clientConn2, serverConn2 := net.Pipe()
+
+	serverErr2 := make(chan error, 1)
+	go func() {
+		serverErr2 <- runServerSide(t, serverConn2, targetDir, 512)
+	}()
+
+	if err := runClientSide(t, clientConn2, sourceDir, true); err != nil {
+		t.Fatalf("deletion sync failed: %v", err)
+	}
+
+	if err := <-serverErr2; err != nil {
+		t.Fatalf("server failed on deletion sync: %v", err)
+	}
+
+	// Verify deleted files are gone
+	for _, path := range filesToDelete {
+		targetPath := filepath.Join(targetDir, path)
+		if _, err := os.Stat(targetPath); !os.IsNotExist(err) {
+			t.Errorf("%s should be deleted from target", path)
+		}
+	}
+
+	// Verify kept files still exist
+	filesToKeep := []string{"keep1.txt", "keep2.txt", "subdir/keep3.txt"}
+	for _, path := range filesToKeep {
+		targetPath := filepath.Join(targetDir, path)
+		if _, err := os.Stat(targetPath); err != nil {
+			t.Errorf("%s should still exist: %v", path, err)
+		}
+	}
+}
+
 // min helper for Go versions < 1.21
 func min(a, b int) int {
 	if a < b {
