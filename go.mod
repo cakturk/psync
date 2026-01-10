@@ -10,7 +10,4 @@ require (
 	github.com/google/go-cmp v0.7.0
 )
 
-require (
-	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c // indirect
-	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 // indirect
-)
+require golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c // indirect
